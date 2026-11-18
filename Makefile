@@ -24,8 +24,8 @@ PhotographicStyles12_FILES = Tweak.xm \
 	UI/PSStyleControlPanel.m \
 	UI/PSOverlayPassthroughView.m
 
-PhotographicStyles12_CFLAGS = -fobjc-arc -Wall -Wextra -Werror \
-	-Wno-unused-parameter -Wno-deprecated-declarations \
+PhotographicStyles12_CFLAGS = -fobjc-arc -fno-modules -Wall -Wextra -Werror \
+	-Wno-unused-parameter -Wno-deprecated-declarations -Wno-deprecated-module-dot-map \
 	-I$(THEOS_PROJECT_DIR)/Headers \
 	-I$(THEOS_PROJECT_DIR)/Core \
 	-I$(THEOS_PROJECT_DIR)/Captures \
