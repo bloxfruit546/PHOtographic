@@ -1,0 +1,66 @@
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-ios12:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run v2.0.0 static, layout & fuzz verification suite
+        run: |
+          set -e
+          python3 tools/verify_phase1.py
+          python3 tools/verify_phase2.py
+          python3 tools/verify_phase3.py
+          python3 tools/verify_phase4.py
+          python3 tools/verify_release_v2.py
+
+      - name: Install Theos & iOS 12.4 SDK
+        run: |
+          set -e
+          THEOS="$HOME/theos"
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          rm -rf "$THEOS/sdks"
+          git clone --depth 1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          if [ ! -d "$THEOS/sdks/iPhoneOS12.4.sdk" ]; then
+            echo "ERROR: iPhoneOS12.4.sdk not found in $THEOS/sdks"
+            exit 1
+          fi
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+      - name: Clean & Build .deb package (iOS 12 gzip)
+        run: |
+          make clean package FINALPACKAGE=1 _THEOS_PLATFORM_DPKG_DEB_COMPRESSION=gzip THEOS_PLATFORM_DEB_COMPRESSION_TYPE=gzip
+
+      - name: Verify iOS 12 dpkg compatibility (gzip, arm64)
+        run: |
+          set -e
+          DEB_FILE=$(ls packages/*.deb | head -n 1)
+          echo "Checking archive contents of $DEB_FILE"
+          ar -t "$DEB_FILE"
+          if ar -t "$DEB_FILE" | grep -q '\.zst'; then
+            echo "ERROR: Package contains zstd compression, incompatible with iOS 12 dpkg!"
+            exit 1
+          fi
+          if ! ar -t "$DEB_FILE" | grep -q 'control\.tar\.gz'; then
+            echo "ERROR: Package is missing control.tar.gz!"
+            exit 1
+          fi
+          if command -v dpkg-deb >/dev/null 2>&1; then
+            dpkg-deb -I "$DEB_FILE"
+            dpkg-deb -f "$DEB_FILE" Architecture | grep -q '^iphoneos-arm$'
+          fi
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotographicStyles12-v2.0.0-deb
+          path: packages/*.deb
+          if-no-files-found: error
