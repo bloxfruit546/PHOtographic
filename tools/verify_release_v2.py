@@ -31,7 +31,7 @@ def check_clean_repo():
 def check_control():
     with open(os.path.join(ROOT, "control"), "r", encoding="utf-8") as f:
         ctrl = f.read()
-    assert re.search(r"^Version:\s*2\.0\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.0.0"
+    assert re.search(r"^Version:\s*2\.0\.2\s*$", ctrl, re.MULTILINE), "control Version must be 2.0.2"
     assert re.search(r"^Architecture:\s*iphoneos-arm\s*$", ctrl, re.MULTILINE), "control Architecture must be iphoneos-arm"
     assert "Depends: firmware (>= 12.0), mobilesubstrate" in ctrl, "control Depends mismatch"
 
@@ -86,6 +86,26 @@ def check_thumbnail_fast_path():
     with open(os.path.join(ROOT, "Tweak.xm"), "r", encoding="utf-8") as f:
         tw = f.read()
     assert "bakedFastThumbnailImage:" in tw
+    assert "PS12LogException" in tw, "Tweak.xm must use PS12LogException defensive shield"
+
+    with open(os.path.join(ROOT, "UI", "PSOverlayPassthroughView.m"), "r", encoding="utf-8") as f:
+        ov = f.read()
+    assert "ps12_ensureControlPanelLoaded" in ov, "PSOverlayPassthroughView must lazily instantiate PSStyleControlPanel"
+    init_body = ov.split("- (instancetype)initWithFrame:")[1].split("- (CGRect)ps12_panelFrameForBounds:")[0]
+    assert "PSStyleControlPanel" not in init_body, "PSStyleControlPanel must NOT be allocated in initWithFrame:"
+
+    for p in iter_v2_source_files():
+        with open(p, "r", encoding="utf-8") as f:
+            src = f.read()
+        for bad in (
+            "NSTrackingAttributeName",
+            "automaticallyAdjustsScrollIndicatorInsets",
+            "showsLargeContentViewer",
+            "overrideUserInterfaceStyle",
+            "symbolConfiguration",
+            "panGestureRecognizer.delegate =",
+        ):
+            assert bad not in src, f"{os.path.relpath(p, ROOT)}: forbidden call {bad!r}"
 
 
 def check_ci_workflow():

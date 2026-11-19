@@ -267,6 +267,9 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     CGFloat w = CGRectGetWidth(rect);
     CGFloat h = CGRectGetHeight(rect);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
     CGFloat glowRadius = MAX(w, h) * 0.72;
     CGFloat glowAlpha = (CGFloat)(0.35f + 0.65f * _palette) * 0.42;
 

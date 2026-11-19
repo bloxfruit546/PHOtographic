@@ -57,12 +57,18 @@ FORBIDDEN_IOS13_APIS = [
     "UIScene",
     "systemBackgroundColor",
     "UIContextMenuInteraction",
+    "NSTrackingAttributeName",
+    "automaticallyAdjustsScrollIndicatorInsets",
+    "showsLargeContentViewer",
+    "overrideUserInterfaceStyle",
+    "symbolConfiguration",
 ]
 
 FORBIDDEN_INTRUSIONS = [
     re.compile(r"%hook\s+CIContext\b"),
     re.compile(r"%hook\s+CALayer\b"),
     re.compile(r"\bAVCaptureVideoDataOutput\b"),
+    re.compile(r"panGestureRecognizer\.delegate\s*="),
 ]
 
 

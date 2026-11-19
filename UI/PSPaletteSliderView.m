@@ -106,6 +106,9 @@ static inline float PS12SliderClamp(float v, float lo, float hi) {
 
     CGFloat w = CGRectGetWidth(self.bounds);
     CGFloat h = CGRectGetHeight(self.bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
     CGFloat trackW = MAX(1.0, w - kPS12ThumbInset * 2.0);
 
     [CATransaction begin];
@@ -124,6 +127,9 @@ static inline float PS12SliderClamp(float v, float lo, float hi) {
 - (void)ps12_updateThumbFrame {
     CGFloat w = CGRectGetWidth(self.bounds);
     CGFloat h = CGRectGetHeight(self.bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
     CGFloat usableW = MAX(1.0, w - kPS12ThumbInset * 2.0);
     CGFloat x = kPS12ThumbInset + (CGFloat)_palette * usableW;
 

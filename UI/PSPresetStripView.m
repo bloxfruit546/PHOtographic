@@ -7,6 +7,7 @@
 
 #import "PSPresetStripView.h"
 #import <QuartzCore/QuartzCore.h>
+#import <math.h>
 
 @interface PSPresetSwatchView : UIView {
     float _shadowRGB[3];
@@ -77,7 +78,10 @@
 @implementation PSPresetStripView
 
 - (instancetype)initWithFrame:(CGRect)frame {
-    CGRect f = CGRectIsEmpty(frame) ? CGRectMake(0.0, 0.0, 290.0, 34.0) : frame;
+    BOOL invalidFrame = CGRectIsEmpty(frame) ||
+                        !isfinite(frame.size.width) || !isfinite(frame.size.height) ||
+                        frame.size.width <= 0.0 || frame.size.height <= 0.0;
+    CGRect f = invalidFrame ? CGRectMake(0.0, 0.0, 290.0, 34.0) : frame;
     self = [super initWithFrame:f];
     if (self) {
         _selectedPresetIndex = 0;
@@ -92,7 +96,6 @@
         _scrollView.decelerationRate = UIScrollViewDecelerationRateFast;
         _scrollView.alwaysBounceHorizontal = YES;
         _scrollView.exclusiveTouch = YES;
-        _scrollView.panGestureRecognizer.delegate = self;
         [self addSubview:_scrollView];
 
         _dividerView = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, 1.0, 16.0)];
@@ -118,10 +121,11 @@
         btn.exclusiveTouch = YES;
         btn.contentEdgeInsets = UIEdgeInsetsMake(0.0, 22.0, 0.0, 10.0);
 
+        UIFont *chipFont = [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold] ?: [UIFont boldSystemFontOfSize:10.0];
         NSAttributedString *attrTitle = [[NSAttributedString alloc]
-            initWithString:title
+            initWithString:(title ?: @"")
                 attributes:@{
-                    NSFontAttributeName : [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold],
+                    NSFontAttributeName : chipFont,
                     NSKernAttributeName : @0.5,
                     NSForegroundColorAttributeName : [UIColor colorWithWhite:0.95 alpha:0.90]
                 }];
@@ -143,7 +147,11 @@
 }
 
 - (void)ps12_layoutChips {
+    CGFloat w = CGRectGetWidth(self.bounds);
     CGFloat h = CGRectGetHeight(self.bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
     CGFloat chipH = 26.0;
     CGFloat chipY = (h - chipH) * 0.5;
     CGFloat x = 4.0;
@@ -201,10 +209,11 @@
             ? yellow.CGColor
             : [UIColor colorWithWhite:1.0 alpha:0.14].CGColor;
 
+        UIFont *chipFont = [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold] ?: [UIFont boldSystemFontOfSize:10.0];
         NSAttributedString *attrTitle = [[NSAttributedString alloc]
-            initWithString:PSPresetDisplayName(i)
+            initWithString:(PSPresetDisplayName(i) ?: @"")
                 attributes:@{
-                    NSFontAttributeName : [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold],
+                    NSFontAttributeName : chipFont,
                     NSKernAttributeName : @0.5,
                     NSForegroundColorAttributeName : selected ? yellow : normalText
                 }];

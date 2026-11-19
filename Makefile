@@ -10,6 +10,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = PhotographicStyles12
 
 PhotographicStyles12_FILES = Tweak.xm \
+	Core/PSDiagnostics.m \
 	Core/PSState.m \
 	Core/PSColorProfile.m \
 	Core/PSColorEngine.m \

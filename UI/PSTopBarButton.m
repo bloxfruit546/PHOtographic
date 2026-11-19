@@ -90,6 +90,11 @@
     if (!ctx) {
         return;
     }
+    CGFloat rw = CGRectGetWidth(rect);
+    CGFloat rh = CGRectGetHeight(rect);
+    if (!isfinite(rw) || rw <= 2.0 || !isfinite(rh) || rh <= 2.0) {
+        return;
+    }
 
     CGRect bounds = CGRectInset(rect, 0.5, 0.5);
     CGFloat radius = CGRectGetHeight(bounds) * 0.5;

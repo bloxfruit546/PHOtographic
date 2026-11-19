@@ -1,6 +1,6 @@
 Package: com.ps12.photographicstyles12
 Name: PhotographicStyles12
-Version: 2.0.0
+Version: 2.0.2
 Architecture: iphoneos-arm
 Description: 15 iPhone 16 Pro Max Photographic Styles (Undertones + Mood) for iOS 12.0-12.5.8 (arm64). Features a 60fps QuartzCore CAFilter viewfinder preview, skin-tone protected CIColorKernel capture baking, and full Iris Live Photo compatibility.
 Maintainer: PS12 Developer <dev@ps12.local>

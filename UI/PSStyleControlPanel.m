@@ -213,6 +213,10 @@ typedef NS_ENUM(NSInteger, PSGlyphKind) {
     [super layoutSubviews];
 
     CGFloat w = CGRectGetWidth(self.bounds);
+    CGFloat h = CGRectGetHeight(self.bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
     CGFloat padX = 10.0;
     CGFloat y = 8.0;
 
@@ -242,11 +246,12 @@ typedef NS_ENUM(NSInteger, PSGlyphKind) {
     // Row 4: Palette Slider (26 pt)
     self.paletteLabel.frame = CGRectMake(padX + 2.0, y + 6.0, 52.0, 14.0);
     CGFloat sliderX = CGRectGetMaxX(self.paletteLabel.frame) + 4.0;
-    self.paletteSlider.frame = CGRectMake(sliderX, y, w - padX - sliderX, 26.0);
+    CGFloat sliderW = MAX(1.0, w - padX - sliderX);
+    self.paletteSlider.frame = CGRectMake(sliderX, y, sliderW, 26.0);
     y += 28.0;
 
     // Row 5: 15-Preset Carousel (34 pt)
-    self.presetStrip.frame = CGRectMake(6.0, y, w - 12.0, 34.0);
+    self.presetStrip.frame = CGRectMake(6.0, y, MAX(1.0, w - 12.0), 34.0);
 }
 
 - (void)syncWithStateAnimated:(BOOL)animated {

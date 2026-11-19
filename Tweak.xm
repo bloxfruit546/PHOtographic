@@ -25,6 +25,7 @@
 #import "PSCaptureCoordinator.h"
 #import "PSStillImageBaker.h"
 #import "PSLivePhotoVideoBaker.h"
+#import "PSDiagnostics.h"
 
 static const void *kPS12OverlayAssocKey          = &kPS12OverlayAssocKey;
 static const void *kPS12BakedPreviewImageKey     = &kPS12BakedPreviewImageKey;
@@ -62,20 +63,24 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     if (!orig) {
         return nil;
     }
-    UIImage *cached = objc_getAssociatedObject(response, assocKey);
-    if (cached) {
-        return cached;
-    }
+    @try {
+        UIImage *cached = objc_getAssociatedObject(response, assocKey);
+        if (cached) {
+            return cached;
+        }
 
-    PSRenderSnapshot snap = [[PSState shared] snapshot];
-    if (PSResolveParameters(snap).isIdentity) {
-        return orig;
-    }
+        PSRenderSnapshot snap = [[PSState shared] snapshot];
+        if (PSResolveParameters(snap).isIdentity) {
+            return orig;
+        }
 
-    UIImage *processed = [PSStillImageBaker bakedFastThumbnailImage:orig snapshot:snap];
-    if (processed && processed != orig) {
-        objc_setAssociatedObject(response, assocKey, processed, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return processed;
+        UIImage *processed = [PSStillImageBaker bakedFastThumbnailImage:orig snapshot:snap];
+        if (processed && processed != orig) {
+            objc_setAssociatedObject(response, assocKey, processed, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return processed;
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"PS12BakeResponseImage", exception);
     }
     return orig;
 }
@@ -89,40 +94,48 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
 - (void)viewDidLoad {
     %orig;
 
-    CAMPreviewView *previewView = PS12SafePreviewViewFromViewfinder(self);
-    PSOverlayPassthroughView *overlay = objc_getAssociatedObject(self, kPS12OverlayAssocKey);
+    @try {
+        CAMPreviewView *previewView = PS12SafePreviewViewFromViewfinder(self);
+        PSOverlayPassthroughView *overlay = objc_getAssociatedObject(self, kPS12OverlayAssocKey);
 
-    if (!overlay && [self isViewLoaded] && self.view) {
-        overlay = [[PSOverlayPassthroughView alloc] initWithFrame:self.view.bounds];
-        overlay.targetPreviewView = previewView;
+        if (!overlay && [self isViewLoaded] && self.view) {
+            overlay = [[PSOverlayPassthroughView alloc] initWithFrame:self.view.bounds];
+            overlay.targetPreviewView = previewView;
 
-        if (previewView && previewView.superview == self.view) {
-            [self.view insertSubview:overlay aboveSubview:previewView];
-        } else {
-            [self.view addSubview:overlay];
+            if (previewView && previewView.superview == self.view) {
+                [self.view insertSubview:overlay aboveSubview:previewView];
+            } else {
+                [self.view addSubview:overlay];
+            }
+            objc_setAssociatedObject(self, kPS12OverlayAssocKey, overlay, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        objc_setAssociatedObject(self, kPS12OverlayAssocKey, overlay, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
 
-    if (previewView) {
-        [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+        if (previewView) {
+            [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMViewfinderViewController.viewDidLoad", exception);
     }
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    CAMPreviewView *previewView = PS12SafePreviewViewFromViewfinder(self);
-    PSOverlayPassthroughView *overlay = objc_getAssociatedObject(self, kPS12OverlayAssocKey);
+    @try {
+        CAMPreviewView *previewView = PS12SafePreviewViewFromViewfinder(self);
+        PSOverlayPassthroughView *overlay = objc_getAssociatedObject(self, kPS12OverlayAssocKey);
 
-    if (overlay && self.view) {
-        overlay.frame = self.view.bounds;
-        overlay.targetPreviewView = previewView;
-        [overlay syncWithState];
-    }
+        if (overlay && self.view) {
+            overlay.frame = self.view.bounds;
+            overlay.targetPreviewView = previewView;
+            [overlay syncWithState];
+        }
 
-    if (previewView) {
-        [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+        if (previewView) {
+            [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMViewfinderViewController.viewDidLayoutSubviews", exception);
     }
 }
 
@@ -132,7 +145,11 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
 
 - (void)layoutSubviews {
     %orig;
-    [[PSPreviewFilterController shared] refreshOnPreviewView:self];
+    @try {
+        [[PSPreviewFilterController shared] refreshOnPreviewView:self];
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMPreviewView.layoutSubviews", exception);
+    }
 }
 
 %end
@@ -170,24 +187,28 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
         return %orig(url, data, thumbnail, properties, duringBurst, error);
     }
 
-    PSRenderSnapshot snap = [[PSState shared] snapshot];
-    if (PSResolveParameters(snap).isIdentity) {
-        return %orig(url, data, thumbnail, properties, duringBurst, error);
-    }
-
-    __block NSData *bakedData = nil;
-    __block UIImage *bakedThumb = thumbnail;
-
-    [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
-        bakedData = [PSStillImageBaker bakedJPEGDataFromJPEGData:data snapshot:snap context:context];
-        if (thumbnail) {
-            bakedThumb = [PSStillImageBaker bakedPreviewImage:thumbnail snapshot:snap context:context] ?: thumbnail;
+    @try {
+        PSRenderSnapshot snap = [[PSState shared] snapshot];
+        if (PSResolveParameters(snap).isIdentity) {
+            return %orig(url, data, thumbnail, properties, duringBurst, error);
         }
-    }];
 
-    if (bakedData && bakedData != data && bakedData.length > 512) {
-        PS12MarkURLBaked(url);
-        return %orig(url, bakedData, bakedThumb, properties, duringBurst, error);
+        __block NSData *bakedData = nil;
+        __block UIImage *bakedThumb = thumbnail;
+
+        [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
+            bakedData = [PSStillImageBaker bakedJPEGDataFromJPEGData:data snapshot:snap context:context];
+            if (thumbnail) {
+                bakedThumb = [PSStillImageBaker bakedPreviewImage:thumbnail snapshot:snap context:context] ?: thumbnail;
+            }
+        }];
+
+        if (bakedData && bakedData != data && bakedData.length > 512) {
+            PS12MarkURLBaked(url);
+            return %orig(url, bakedData, bakedThumb, properties, duringBurst, error);
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMPersistenceController._writeJPEGToURL", exception);
     }
 
     return %orig(url, data, thumbnail, properties, duringBurst, error);
@@ -217,37 +238,41 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     }
 
     void (^wrappedHandler)(id) = ^(id localResult) {
-        if (localResult) {
-            NSURL *destURL = nil;
-            NSURL *linkedURL = nil;
-            @try {
-                if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
-                    destURL = [localResult localDestinationURL];
+        @try {
+            if (localResult) {
+                NSURL *destURL = nil;
+                NSURL *linkedURL = nil;
+                @try {
+                    if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
+                        destURL = [localResult localDestinationURL];
+                    }
+                    if ([localResult respondsToSelector:@selector(linkedDestinationURL)]) {
+                        linkedURL = [localResult linkedDestinationURL];
+                    }
+                } @catch (NSException *exception) {
+                    PS12LogException(@"CAMPersistenceController.stillResultURLs", exception);
+                    destURL = nil;
+                    linkedURL = nil;
                 }
-                if ([localResult respondsToSelector:@selector(linkedDestinationURL)]) {
-                    linkedURL = [localResult linkedDestinationURL];
-                }
-            } @catch (NSException *exception) {
-                (void)exception;
-                destURL = nil;
-                linkedURL = nil;
-            }
 
-            if ((destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) ||
-                (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL))) {
-                [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
-                    if (destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) {
-                        if ([PSStillImageBaker bakeJPEGFileAtURL:destURL snapshot:snap context:context]) {
-                            PS12MarkURLBaked(destURL);
+                if ((destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) ||
+                    (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL))) {
+                    [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
+                        if (destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) {
+                            if ([PSStillImageBaker bakeJPEGFileAtURL:destURL snapshot:snap context:context]) {
+                                PS12MarkURLBaked(destURL);
+                            }
                         }
-                    }
-                    if (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL)) {
-                        if ([PSStillImageBaker bakeJPEGFileAtURL:linkedURL snapshot:snap context:context]) {
-                            PS12MarkURLBaked(linkedURL);
+                        if (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL)) {
+                            if ([PSStillImageBaker bakeJPEGFileAtURL:linkedURL snapshot:snap context:context]) {
+                                PS12MarkURLBaked(linkedURL);
+                            }
                         }
-                    }
-                }];
+                    }];
+                }
             }
+        } @catch (NSException *exception) {
+            PS12LogException(@"CAMPersistenceController.stillHandler", exception);
         }
         if (completionHandler) {
             completionHandler(localResult);
@@ -314,27 +339,31 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     }
 
     void (^wrappedHandler)(id) = ^(id localResult) {
-        if (localResult && ![NSThread isMainThread]) {
-            NSURL *finalURL = nil;
-            @try {
-                if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
-                    finalURL = [localResult localDestinationURL];
-                }
-                if (!finalURL && [localResult respondsToSelector:@selector(filteredLocalDestinationURL)]) {
-                    finalURL = [localResult filteredLocalDestinationURL];
-                }
-            } @catch (NSException *exception) {
-                (void)exception;
-                finalURL = nil;
-            }
-            if (finalURL && [finalURL isFileURL] && !PS12IsURLBaked(finalURL) &&
-                (!sourceURL || !PS12IsURLBaked(sourceURL))) {
-                [coordinator performSynchronousSerializedBake:^(CIContext *context) {
-                    if ([PSLivePhotoVideoBaker bakeLivePhotoMovieAtURL:finalURL snapshot:snap context:context]) {
-                        PS12MarkURLBaked(finalURL);
+        @try {
+            if (localResult && ![NSThread isMainThread]) {
+                NSURL *finalURL = nil;
+                @try {
+                    if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
+                        finalURL = [localResult localDestinationURL];
                     }
-                }];
+                    if (!finalURL && [localResult respondsToSelector:@selector(filteredLocalDestinationURL)]) {
+                        finalURL = [localResult filteredLocalDestinationURL];
+                    }
+                } @catch (NSException *exception) {
+                    PS12LogException(@"CAMPersistenceController.videoResultURLs", exception);
+                    finalURL = nil;
+                }
+                if (finalURL && [finalURL isFileURL] && !PS12IsURLBaked(finalURL) &&
+                    (!sourceURL || !PS12IsURLBaked(sourceURL))) {
+                    [coordinator performSynchronousSerializedBake:^(CIContext *context) {
+                        if ([PSLivePhotoVideoBaker bakeLivePhotoMovieAtURL:finalURL snapshot:snap context:context]) {
+                            PS12MarkURLBaked(finalURL);
+                        }
+                    }];
+                }
             }
+        } @catch (NSException *exception) {
+            PS12LogException(@"CAMPersistenceController.videoHandler", exception);
         }
         if (completionHandler) {
             completionHandler(localResult);

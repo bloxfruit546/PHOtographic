@@ -11,6 +11,7 @@
 #import "PSStyleControlPanel.h"
 #import "PSState.h"
 #import "PSPreviewFilterController.h"
+#import "PSDiagnostics.h"
 #import <math.h>
 
 static const CGFloat kPS12TopButtonW = 40.0;
@@ -20,9 +21,11 @@ static const CGFloat kPS12PanelH     = 252.0;
 
 @interface PSOverlayPassthroughView () <PSTopBarButtonDelegate, PSStyleControlPanelDelegate>
 @property (nonatomic, strong) PSTopBarButton *topBarButton;
-@property (nonatomic, strong) PSStyleControlPanel *controlPanel;
+@property (nonatomic, strong, nullable) PSStyleControlPanel *controlPanel;
 @property (nonatomic, assign) BOOL panelVisible;
 
+- (CGRect)ps12_panelFrameForBounds:(CGRect)bounds;
+- (nullable PSStyleControlPanel *)ps12_ensureControlPanelLoaded;
 - (void)ps12_setPanelVisible:(BOOL)visible animated:(BOOL)animated;
 @end
 
@@ -39,16 +42,53 @@ static const CGFloat kPS12PanelH     = 252.0;
         _topBarButton.delegate = self;
         [self addSubview:_topBarButton];
 
-        _controlPanel = [[PSStyleControlPanel alloc] initWithFrame:CGRectMake(0.0, 0.0, kPS12PanelMaxW, kPS12PanelH)];
-        _controlPanel.delegate = self;
-        _controlPanel.hidden = YES;
-        _controlPanel.alpha = 0.0;
-        [self addSubview:_controlPanel];
-
+        _controlPanel = nil;
         _panelVisible = NO;
         [self syncWithState];
     }
     return self;
+}
+
+- (CGRect)ps12_panelFrameForBounds:(CGRect)bounds {
+    CGFloat w = CGRectGetWidth(bounds);
+    CGFloat h = CGRectGetHeight(bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return CGRectMake(8.0, 100.0, kPS12PanelMaxW, kPS12PanelH);
+    }
+
+    CGFloat bottomSafe = 0.0;
+    if (@available(iOS 11.0, *)) {
+        bottomSafe = self.safeAreaInsets.bottom;
+    }
+
+    CGFloat panelW = MIN(kPS12PanelMaxW, MAX(260.0, w - 16.0));
+    CGFloat panelX = (w - panelW) * 0.5;
+    CGFloat bottomBarReserve = 138.0 + bottomSafe;
+    CGFloat panelY = h - bottomBarReserve - kPS12PanelH;
+    CGFloat minTopY = CGRectGetMaxY(self.topBarButton.frame) + 8.0;
+    if (panelY < minTopY) {
+        panelY = minTopY;
+    }
+    return CGRectMake(panelX, panelY, panelW, kPS12PanelH);
+}
+
+- (nullable PSStyleControlPanel *)ps12_ensureControlPanelLoaded {
+    if (_controlPanel) {
+        return _controlPanel;
+    }
+    @try {
+        CGRect panelFrame = [self ps12_panelFrameForBounds:self.bounds];
+        PSStyleControlPanel *panel = [[PSStyleControlPanel alloc] initWithFrame:panelFrame];
+        panel.delegate = self;
+        panel.hidden = YES;
+        panel.alpha = 0.0;
+        [self addSubview:panel];
+        _controlPanel = panel;
+        return _controlPanel;
+    } @catch (NSException *exception) {
+        PS12LogException(@"PSOverlayPassthroughView.ensureControlPanelLoaded", exception);
+        return nil;
+    }
 }
 
 - (void)layoutSubviews {
@@ -56,13 +96,14 @@ static const CGFloat kPS12PanelH     = 252.0;
 
     CGFloat w = CGRectGetWidth(self.bounds);
     CGFloat h = CGRectGetHeight(self.bounds);
+    if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
+        return;
+    }
 
     CGFloat topSafe = 0.0;
-    CGFloat bottomSafe = 0.0;
     CGFloat rightSafe = 0.0;
     if (@available(iOS 11.0, *)) {
         topSafe = self.safeAreaInsets.top;
-        bottomSafe = self.safeAreaInsets.bottom;
         rightSafe = self.safeAreaInsets.right;
     }
 
@@ -72,17 +113,9 @@ static const CGFloat kPS12PanelH     = 252.0;
     if (btnX < 8.0) btnX = 8.0;
     self.topBarButton.frame = CGRectMake(btnX, btnY, kPS12TopButtonW, kPS12TopButtonH);
 
-    // Control panel centered horizontally, sitting cleanly above bottom shutter/mode bar (~138pt)
-    CGFloat panelW = MIN(kPS12PanelMaxW, MAX(260.0, w - 16.0));
-    CGFloat panelX = (w - panelW) * 0.5;
-    CGFloat bottomBarReserve = 138.0 + bottomSafe;
-    CGFloat panelY = h - bottomBarReserve - kPS12PanelH;
-    CGFloat minTopY = CGRectGetMaxY(self.topBarButton.frame) + 8.0;
-    if (panelY < minTopY) {
-        panelY = minTopY;
+    if (self.controlPanel) {
+        self.controlPanel.frame = [self ps12_panelFrameForBounds:self.bounds];
     }
-
-    self.controlPanel.frame = CGRectMake(panelX, panelY, panelW, kPS12PanelH);
 }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
@@ -95,50 +128,61 @@ static const CGFloat kPS12PanelH     = 252.0;
 
 - (void)syncWithState {
     [self.topBarButton syncWithState];
-    if (!self.controlPanel.hidden) {
+    if (self.controlPanel && !self.controlPanel.hidden) {
         [self.controlPanel syncWithStateAnimated:NO];
     }
 }
 
 - (void)ps12_setPanelVisible:(BOOL)visible animated:(BOOL)animated {
-    _panelVisible = visible;
-    self.topBarButton.panelOpen = visible;
-
     if (visible) {
-        [self.controlPanel syncWithStateAnimated:NO];
-        self.controlPanel.hidden = NO;
+        PSStyleControlPanel *panel = [self ps12_ensureControlPanelLoaded];
+        if (!panel) {
+            _panelVisible = NO;
+            self.topBarButton.panelOpen = NO;
+            return;
+        }
+        _panelVisible = YES;
+        self.topBarButton.panelOpen = YES;
+        [panel syncWithStateAnimated:NO];
+        panel.hidden = NO;
         if (animated) {
-            self.controlPanel.alpha = 0.0;
-            self.controlPanel.transform = CGAffineTransformMakeTranslation(0.0, 14.0);
+            panel.alpha = 0.0;
+            panel.transform = CGAffineTransformMakeTranslation(0.0, 14.0);
             [UIView animateWithDuration:0.22
                                   delay:0.0
                  usingSpringWithDamping:0.86
                   initialSpringVelocity:0.4
                                 options:UIViewAnimationOptionAllowUserInteraction
                              animations:^{
-                self.controlPanel.alpha = 1.0;
-                self.controlPanel.transform = CGAffineTransformIdentity;
+                panel.alpha = 1.0;
+                panel.transform = CGAffineTransformIdentity;
             } completion:nil];
         } else {
-            self.controlPanel.alpha = 1.0;
-            self.controlPanel.transform = CGAffineTransformIdentity;
+            panel.alpha = 1.0;
+            panel.transform = CGAffineTransformIdentity;
         }
     } else {
+        _panelVisible = NO;
+        self.topBarButton.panelOpen = NO;
+        PSStyleControlPanel *panel = self.controlPanel;
+        if (!panel) {
+            return;
+        }
         if (animated) {
             [UIView animateWithDuration:0.16 animations:^{
-                self.controlPanel.alpha = 0.0;
-                self.controlPanel.transform = CGAffineTransformMakeTranslation(0.0, 10.0);
+                panel.alpha = 0.0;
+                panel.transform = CGAffineTransformMakeTranslation(0.0, 10.0);
             } completion:^(BOOL finished) {
                 (void)finished;
                 if (!self.panelVisible) {
-                    self.controlPanel.hidden = YES;
-                    self.controlPanel.transform = CGAffineTransformIdentity;
+                    panel.hidden = YES;
+                    panel.transform = CGAffineTransformIdentity;
                 }
             }];
         } else {
-            self.controlPanel.alpha = 0.0;
-            self.controlPanel.hidden = YES;
-            self.controlPanel.transform = CGAffineTransformIdentity;
+            panel.alpha = 0.0;
+            panel.hidden = YES;
+            panel.transform = CGAffineTransformIdentity;
         }
     }
 }
