@@ -12,9 +12,17 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// Appends a timestamped exception report (name, reason, callStackSymbols)
 /// to /var/mobile/Library/Logs/PhotographicStyles12.log (capped at 64 KB).
 void PS12LogException(NSString *context, NSException *exception);
+
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_END
 
