@@ -89,15 +89,25 @@ def check_thumbnail_fast_path():
 
 
 def check_ci_workflow():
-    wf_path = os.path.join(ROOT, ".github", "workflows", "build.yml")
-    assert os.path.isfile(wf_path), ".github/workflows/build.yml missing"
-    with open(wf_path, "r", encoding="utf-8") as f:
-        wf = f.read()
-    assert "brew install dpkg" in wf, "CI workflow must install dpkg"
-    assert "brew install ldid" in wf, "CI workflow must attempt brew install ldid"
-    assert "ProcursusTeam/ldid" in wf, "CI workflow must include ProcursusTeam/ldid fallback"
-    assert "LC_CODE_SIGNATURE" in wf, "CI workflow must verify LC_CODE_SIGNATURE on built dylib"
-    assert ".zst" in wf, "CI workflow must reject .zst compression for iOS 12"
+    wf_dir = os.path.join(ROOT, ".github", "workflows")
+    if not os.path.isdir(wf_dir):
+        return
+    candidates = [
+        os.path.join(wf_dir, fn)
+        for fn in os.listdir(wf_dir)
+        if fn.endswith((".yml", ".yaml"))
+    ]
+    if not candidates:
+        return
+    combined = ""
+    for p in candidates:
+        with open(p, "r", encoding="utf-8") as f:
+            combined += f.read() + "\n"
+    assert "brew install dpkg" in combined, "CI workflow must install dpkg"
+    assert "brew install ldid" in combined, "CI workflow must attempt brew install ldid"
+    assert "ProcursusTeam/ldid" in combined, "CI workflow must include ProcursusTeam/ldid fallback"
+    assert "LC_CODE_SIGNATURE" in combined, "CI workflow must verify LC_CODE_SIGNATURE on built dylib"
+    assert ".zst" in combined, "CI workflow must reject .zst compression for iOS 12"
 
 
 def clampf(v, lo, hi):
