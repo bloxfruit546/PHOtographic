@@ -54,7 +54,7 @@
     PSRenderSnapshot snap = [state snapshot];
     PSResolvedParameters params = PSResolveParameters(snap);
     BOOL active = snap.enabled && !params.isIdentity;
-    CAColorMatrix newMatrix = active ? [state previewMatrixForSnapshot:snap] : PS12CAColorMatrixIdentity();
+    CAColorMatrix newMatrix = active ? [PSState previewMatrixForSnapshot:snap] : PS12CAColorMatrixIdentity();
 
     if (_hasCachedState && _lastActive == active) {
         if (!active || memcmp(&newMatrix, &_lastAppliedMatrix, sizeof(CAColorMatrix)) == 0) {
