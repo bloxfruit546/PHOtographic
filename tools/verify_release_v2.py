@@ -88,6 +88,18 @@ def check_thumbnail_fast_path():
     assert "bakedFastThumbnailImage:" in tw
 
 
+def check_ci_workflow():
+    wf_path = os.path.join(ROOT, ".github", "workflows", "build.yml")
+    assert os.path.isfile(wf_path), ".github/workflows/build.yml missing"
+    with open(wf_path, "r", encoding="utf-8") as f:
+        wf = f.read()
+    assert "brew install dpkg" in wf, "CI workflow must install dpkg"
+    assert "brew install ldid" in wf, "CI workflow must attempt brew install ldid"
+    assert "ProcursusTeam/ldid" in wf, "CI workflow must include ProcursusTeam/ldid fallback"
+    assert "LC_CODE_SIGNATURE" in wf, "CI workflow must verify LC_CODE_SIGNATURE on built dylib"
+    assert ".zst" in wf, "CI workflow must reject .zst compression for iOS 12"
+
+
 def clampf(v, lo, hi):
     return lo if v < lo else (hi if v > hi else v)
 
@@ -201,8 +213,9 @@ def main():
     check_makefile_exact_match()
     check_row1_header_geometry()
     check_thumbnail_fast_path()
+    check_ci_workflow()
     fuzz_10k_iterations()
-    print("[verify_release_v2] ALL CHECKS PASSED (clean repo, v2.0.0 control, 1-to-1 Makefile, header OK, thumb fast-path OK, 10k fuzz OK)")
+    print("[verify_release_v2] ALL CHECKS PASSED (clean repo, v2.0.0 control, 1-to-1 Makefile, header OK, thumb fast-path OK, CI OK, 10k fuzz OK)")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,9 @@ try {
         }
         git push -u origin main
         Write-Host "[OK] Pushed to $RemoteUrl. Check GitHub Actions for the compiled .deb artifact!" -ForegroundColor Green
+    } elseif (git remote 2>$null | Where-Object { $_ -eq "origin" }) {
+        git push
+        Write-Host "[OK] Pushed incremental commit to origin. Check GitHub Actions for the compiled .deb artifact!" -ForegroundColor Green
     } else {
         Write-Host "[OK] Local commit ready. Pass -RemoteUrl https://github.com/<user>/<repo>.git to push." -ForegroundColor Green
     }
