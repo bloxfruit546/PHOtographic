@@ -22,6 +22,36 @@ jobs:
           python3 tools/verify_phase4.py
           python3 tools/verify_release_v2.py
 
+      - name: Install Build Dependencies (dpkg, make, ldid + Procursus fallback)
+        run: |
+          set -e
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+          brew install dpkg make || true
+          brew install ldid || true
+
+          BREW_PREFIX="$(brew --prefix)"
+          MAKE_GNUBIN="$(brew --prefix make 2>/dev/null)/libexec/gnubin"
+          if [ -d "$MAKE_GNUBIN" ]; then
+            echo "$MAKE_GNUBIN" >> "$GITHUB_PATH"
+          fi
+          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
+
+          export PATH="$MAKE_GNUBIN:$BREW_PREFIX/bin:$PATH"
+          if ! command -v ldid >/dev/null 2>&1; then
+            mkdir -p "$RUNNER_TEMP/bin"
+            HOST_ARCH="$(uname -m)"
+            if [ "$HOST_ARCH" = "arm64" ]; then
+              LDID_ASSET="ldid_macos_arm64"
+            else
+              LDID_ASSET="ldid_macos_x86_64"
+            fi
+            curl -fsSL "https://github.com/ProcursusTeam/ldid/releases/latest/download/${LDID_ASSET}" -o "$RUNNER_TEMP/bin/ldid"
+            chmod +x "$RUNNER_TEMP/bin/ldid"
+            xattr -d com.apple.quarantine "$RUNNER_TEMP/bin/ldid" 2>/dev/null || true
+            echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          fi
+
       - name: Install Theos & iOS 12.4 SDK
         run: |
           set -e
@@ -33,13 +63,25 @@ jobs:
             echo "ERROR: iPhoneOS12.4.sdk not found in $THEOS/sdks"
             exit 1
           fi
+          LDID_BIN="$(command -v ldid)"
+          mkdir -p "$THEOS/vendor/bin"
+          ln -sf "$LDID_BIN" "$THEOS/vendor/bin/ldid"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+      - name: Verify Toolchain Readiness
+        run: |
+          set -e
+          command -v ldid
+          command -v dpkg-deb
+          make --version | head -n 2
+          clang --version | head -n 2
+          test -d "$THEOS/sdks/iPhoneOS12.4.sdk"
 
       - name: Clean & Build .deb package (iOS 12 gzip)
         run: |
           make clean package FINALPACKAGE=1 _THEOS_PLATFORM_DPKG_DEB_COMPRESSION=gzip THEOS_PLATFORM_DEB_COMPRESSION_TYPE=gzip
 
-      - name: Verify iOS 12 dpkg compatibility (gzip, arm64)
+      - name: Verify .deb Integrity & Code Signature
         run: |
           set -e
           DEB_FILE=$(ls packages/*.deb | head -n 1)
@@ -53,10 +95,18 @@ jobs:
             echo "ERROR: Package is missing control.tar.gz!"
             exit 1
           fi
-          if command -v dpkg-deb >/dev/null 2>&1; then
-            dpkg-deb -I "$DEB_FILE"
-            dpkg-deb -f "$DEB_FILE" Architecture | grep -q '^iphoneos-arm$'
-          fi
+          dpkg-deb -I "$DEB_FILE"
+          dpkg-deb -f "$DEB_FILE" Architecture | grep -q '^iphoneos-arm$'
+
+          TMP_EXTRACT="$RUNNER_TEMP/deb_verify"
+          rm -rf "$TMP_EXTRACT"
+          mkdir -p "$TMP_EXTRACT"
+          dpkg-deb -x "$DEB_FILE" "$TMP_EXTRACT"
+          DYLIB="$TMP_EXTRACT/Library/MobileSubstrate/DynamicLibraries/PhotographicStyles12.dylib"
+          test -f "$DYLIB"
+          otool -l "$DYLIB" | grep -q 'LC_CODE_SIGNATURE'
+          file "$DYLIB" | grep -q 'arm64'
+          echo "SUCCESS: $DEB_FILE is gzip-compressed, iphoneos-arm/arm64, and ldid-signed!"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
