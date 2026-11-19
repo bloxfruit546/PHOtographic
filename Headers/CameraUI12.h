@@ -13,11 +13,12 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
-#import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreMedia/CoreMedia.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+@class AVCaptureVideoPreviewLayer;
 
 @interface CAMPreviewView : UIView
 

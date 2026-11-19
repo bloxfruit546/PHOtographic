@@ -31,6 +31,8 @@ PhotographicStyles12_CFLAGS = -fobjc-arc -fno-modules -Wall -Wextra -Werror \
 	-I$(THEOS_PROJECT_DIR)/Captures \
 	-I$(THEOS_PROJECT_DIR)/UI
 
+PhotographicStyles12_OBJCCFLAGS = $(PhotographicStyles12_CFLAGS)
+
 PhotographicStyles12_FRAMEWORKS = Foundation UIKit QuartzCore CoreGraphics CoreImage CoreMedia ImageIO AVFoundation
 PhotographicStyles12_LIBRARIES = substrate
 
