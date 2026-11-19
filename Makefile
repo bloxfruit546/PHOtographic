@@ -26,6 +26,7 @@ PhotographicStyles12_FILES = Tweak.xm \
 
 PhotographicStyles12_CFLAGS = -fobjc-arc -fno-modules -Wall -Wextra -Werror \
 	-Wno-unused-parameter -Wno-deprecated-declarations -Wno-deprecated-module-dot-map \
+	-Wno-cast-function-type-mismatch \
 	-I$(THEOS_PROJECT_DIR)/Headers \
 	-I$(THEOS_PROJECT_DIR)/Core \
 	-I$(THEOS_PROJECT_DIR)/Captures \
