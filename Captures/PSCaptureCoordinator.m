@@ -19,9 +19,11 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
     CIContext *_lazyContext;
     CIContext *_thumbnailContext;
     CFAbsoluteTime _lastMemoryWarningTime;
+    uint64_t _idlePurgeGeneration;
     BOOL _livePhotoVideoBakingEnabled;
 }
 - (void)ps12_handleMemoryWarning:(NSNotification *)notification;
+- (void)ps12_scheduleIdleContextPurge;
 @end
 
 @implementation PSCaptureCoordinator
@@ -106,15 +108,38 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
     CIContext *ctx = _lazyContext;
     if (!ctx) {
         NSDictionary *options = @{
-            kCIContextCacheIntermediates : @NO,
-            kCIContextPriorityRequestLow : @YES,
-            kCIContextWorkingColorSpace  : [NSNull null]
+            kCIContextUseSoftwareRenderer : @NO,
+            kCIContextCacheIntermediates  : @NO,
+            kCIContextPriorityRequestLow  : @YES,
+            kCIContextWorkingColorSpace   : [NSNull null],
+            kCIContextOutputColorSpace    : [NSNull null]
         };
         ctx = [CIContext contextWithOptions:options];
         _lazyContext = ctx;
     }
     os_unfair_lock_unlock(&_contextLock);
     return ctx;
+}
+
+- (void)ps12_scheduleIdleContextPurge {
+    os_unfair_lock_lock(&_contextLock);
+    _idlePurgeGeneration += 1;
+    uint64_t token = _idlePurgeGeneration;
+    os_unfair_lock_unlock(&_contextLock);
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), _bakeQueue, ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        os_unfair_lock_lock(&strongSelf->_contextLock);
+        BOOL shouldPurge = (strongSelf->_idlePurgeGeneration == token);
+        os_unfair_lock_unlock(&strongSelf->_contextLock);
+        if (shouldPurge) {
+            [strongSelf releaseCachedContext];
+        }
+    });
 }
 
 - (void)performSerializedBake:(void (^)(CIContext *context))bakeBlock {
@@ -130,6 +155,7 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
             }
         }
         dispatch_semaphore_signal(self->_bakeSemaphore);
+        [self ps12_scheduleIdleContextPurge];
     });
 }
 
@@ -150,6 +176,7 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
                 bakeBlock(ctx);
             }
         }
+        [self ps12_scheduleIdleContextPurge];
         return;
     }
 
@@ -161,6 +188,7 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
         }
     }
     dispatch_semaphore_signal(_bakeSemaphore);
+    [self ps12_scheduleIdleContextPurge];
 }
 
 - (void)performThumbnailBake:(void (^)(CIContext *context))bakeBlock {
@@ -171,8 +199,11 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
     @autoreleasepool {
         if (!_thumbnailContext) {
             NSDictionary *options = @{
-                kCIContextCacheIntermediates : @NO,
-                kCIContextWorkingColorSpace  : [NSNull null]
+                kCIContextUseSoftwareRenderer : @NO,
+                kCIContextCacheIntermediates  : @NO,
+                kCIContextPriorityRequestLow  : @YES,
+                kCIContextWorkingColorSpace   : [NSNull null],
+                kCIContextOutputColorSpace    : [NSNull null]
             };
             _thumbnailContext = [CIContext contextWithOptions:options];
         }
@@ -181,6 +212,7 @@ static const void *kPS12BakeQueueKey = &kPS12BakeQueueKey;
         }
     }
     os_unfair_lock_unlock(&_thumbLock);
+    [self ps12_scheduleIdleContextPurge];
 }
 
 - (void)releaseCachedContext {

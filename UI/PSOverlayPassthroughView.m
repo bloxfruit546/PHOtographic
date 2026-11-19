@@ -7,6 +7,7 @@
 //
 
 #import "PSOverlayPassthroughView.h"
+#import "PSPreviewBackdropView.h"
 #import "PSTopBarButton.h"
 #import "PSStyleControlPanel.h"
 #import "PSState.h"
@@ -20,6 +21,7 @@ static const CGFloat kPS12PanelMaxW  = 304.0;
 static const CGFloat kPS12PanelH     = 252.0;
 
 @interface PSOverlayPassthroughView () <PSTopBarButtonDelegate, PSStyleControlPanelDelegate>
+@property (nonatomic, strong, readwrite) PSPreviewBackdropView *backdropView;
 @property (nonatomic, strong) PSTopBarButton *topBarButton;
 @property (nonatomic, strong, nullable) PSStyleControlPanel *controlPanel;
 @property (nonatomic, assign) BOOL panelVisible;
@@ -37,6 +39,10 @@ static const CGFloat kPS12PanelH     = 252.0;
         self.backgroundColor = [UIColor clearColor];
         self.opaque = NO;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+        _backdropView = [[PSPreviewBackdropView alloc] initWithFrame:self.bounds];
+        [self insertSubview:_backdropView atIndex:0];
+        [PSPreviewFilterController shared].backdropView = _backdropView;
 
         _topBarButton = [[PSTopBarButton alloc] initWithFrame:CGRectMake(0.0, 0.0, kPS12TopButtonW, kPS12TopButtonH)];
         _topBarButton.delegate = self;
@@ -98,6 +104,22 @@ static const CGFloat kPS12PanelH     = 252.0;
     CGFloat h = CGRectGetHeight(self.bounds);
     if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
         return;
+    }
+
+    CGRect backdropFrame = self.bounds;
+    UIView *preview = self.targetPreviewView;
+    if (preview && preview.window && self.window && preview.window == self.window) {
+        CGRect converted = [self convertRect:preview.bounds fromView:preview];
+        if (!CGRectIsEmpty(converted) &&
+            isfinite(converted.origin.x) && isfinite(converted.origin.y) &&
+            isfinite(converted.size.width) && isfinite(converted.size.height) &&
+            converted.size.width > 0.0 && converted.size.height > 0.0) {
+            backdropFrame = converted;
+        }
+    }
+    self.backdropView.frame = backdropFrame;
+    if (self.backdropView.superview == self) {
+        [self sendSubviewToBack:self.backdropView];
     }
 
     CGFloat topSafe = 0.0;
@@ -206,7 +228,7 @@ static const CGFloat kPS12PanelH     = 252.0;
     [state saveNow];
 
     [self syncWithState];
-    [[PSPreviewFilterController shared] refreshOnPreviewView:self.targetPreviewView];
+    [[PSPreviewFilterController shared] refreshOnBackdropView:self.backdropView];
 }
 
 #pragma mark - PSStyleControlPanelDelegate
@@ -214,7 +236,7 @@ static const CGFloat kPS12PanelH     = 252.0;
 - (void)styleControlPanelDidChangeRenderState:(PSStyleControlPanel *)panel {
     (void)panel;
     [self.topBarButton syncWithState];
-    [[PSPreviewFilterController shared] refreshOnPreviewView:self.targetPreviewView];
+    [[PSPreviewFilterController shared] refreshOnBackdropView:self.backdropView];
 }
 
 - (void)styleControlPanelDidRequestCollapse:(PSStyleControlPanel *)panel {

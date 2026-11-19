@@ -2,24 +2,22 @@
 //  PSPreviewFilterController.m
 //  PhotographicStyles12
 //
-//  Hardware-accelerated 60fps CAFilter controller for CAMPreviewView.
+//  Zero-mediaserverd-intrusion viewfinder preview controller.
+//  Drives PSPreviewBackdropView (CABackdropLayer) with strict dirty-checking.
 //
 
 #import "PSPreviewFilterController.h"
+#import "PSPreviewBackdropView.h"
 #import "PSState.h"
-#import "CameraUI12.h"
+#import "PSColorProfile.h"
 #import "QuartzCorePrivate.h"
-#import <objc/runtime.h>
+#import <string.h>
 
-// Alphanumeric name without dots so CALayer KVC keypath
-// `filters.ps12LiveMatrix.inputColorMatrix` resolves cleanly on iOS 12.
-static NSString *const kPS12LiveFilterName = @"ps12LiveMatrix";
-static NSString *const kPS12LiveFilterKeyPath = @"filters.ps12LiveMatrix.inputColorMatrix";
-
-@interface PSPreviewFilterController ()
-- (nullable CALayer *)ps12_targetLayerForPreviewView:(nullable UIView *)previewView;
-- (nullable CAFilter *)ps12_findExistingFilterInArray:(nullable NSArray *)filters;
-- (NSValue *)ps12_boxedMatrix:(CAColorMatrix)matrix;
+@interface PSPreviewFilterController () {
+    BOOL _hasCachedState;
+    BOOL _lastActive;
+    CAColorMatrix _lastAppliedMatrix;
+}
 @end
 
 @implementation PSPreviewFilterController
@@ -33,154 +31,62 @@ static NSString *const kPS12LiveFilterKeyPath = @"filters.ps12LiveMatrix.inputCo
     return s_instance;
 }
 
-- (nullable CALayer *)ps12_targetLayerForPreviewView:(nullable UIView *)previewView {
-    if (!previewView) {
-        return nil;
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _hasCachedState = NO;
+        _lastActive = NO;
+        _lastAppliedMatrix = PS12CAColorMatrixIdentity();
     }
-
-    if ([previewView respondsToSelector:@selector(videoPreviewLayer)]) {
-        @try {
-            id layer = [(CAMPreviewView *)previewView videoPreviewLayer];
-            if ([layer isKindOfClass:[CALayer class]]) {
-                return (CALayer *)layer;
-            }
-        } @catch (NSException *exception) {
-            (void)exception;
-        }
-    }
-
-    if ([previewView respondsToSelector:@selector(previewLayer)]) {
-        @try {
-            id layer = [(CAMPreviewView *)previewView previewLayer];
-            if ([layer isKindOfClass:[CALayer class]]) {
-                return (CALayer *)layer;
-            }
-        } @catch (NSException *exception) {
-            (void)exception;
-        }
-    }
-
-    return previewView.layer;
+    return self;
 }
 
-- (nullable CAFilter *)ps12_findExistingFilterInArray:(nullable NSArray *)filters {
-    for (id item in filters) {
-        if ([item respondsToSelector:@selector(name)]) {
-            @try {
-                NSString *name = [item valueForKey:@"name"];
-                if ([name isKindOfClass:[NSString class]] && [name isEqualToString:kPS12LiveFilterName]) {
-                    return (CAFilter *)item;
-                }
-            } @catch (NSException *exception) {
-                (void)exception;
-            }
-        }
-    }
-    return nil;
-}
-
-- (NSValue *)ps12_boxedMatrix:(CAColorMatrix)matrix {
-    if ([NSValue respondsToSelector:@selector(valueWithCAColorMatrix:)]) {
-        return [NSValue valueWithCAColorMatrix:matrix];
-    }
-    return [NSValue valueWithBytes:&matrix objCType:@encode(CAColorMatrix)];
-}
-
-- (void)refreshOnPreviewView:(nullable UIView *)previewView {
-    CALayer *targetLayer = [self ps12_targetLayerForPreviewView:previewView];
-    if (!targetLayer) {
+- (void)refreshOnBackdropView:(nullable PSPreviewBackdropView *)backdropView {
+    PSPreviewBackdropView *target = backdropView ?: self.backdropView;
+    if (!target) {
         return;
+    }
+    if (backdropView && self.backdropView != backdropView) {
+        self.backdropView = backdropView;
     }
 
     PSState *state = [PSState shared];
-    if (![state isEnabled]) {
-        [self detachFromPreviewView:previewView];
-        return;
-    }
+    PSRenderSnapshot snap = [state snapshot];
+    PSResolvedParameters params = PSResolveParameters(snap);
+    BOOL active = snap.enabled && !params.isIdentity;
+    CAColorMatrix newMatrix = active ? [state previewMatrixForSnapshot:snap] : PS12CAColorMatrixIdentity();
 
-    Class caFilterClass = NSClassFromString(@"CAFilter");
-    if (!caFilterClass || ![caFilterClass respondsToSelector:@selector(filterWithType:)]) {
-        return;
-    }
-
-    CAColorMatrix matrix = [state previewMatrixForCurrentState];
-    NSValue *matrixValue = [self ps12_boxedMatrix:matrix];
-
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-
-    NSArray *existingFilters = targetLayer.filters;
-    CAFilter *existing = [self ps12_findExistingFilterInArray:existingFilters];
-
-    if (existing) {
-        @try {
-            [existing setValue:@YES forKey:@"enabled"];
-            [existing setValue:matrixValue forKey:@"inputColorMatrix"];
-            [targetLayer setValue:matrixValue forKeyPath:kPS12LiveFilterKeyPath];
-        } @catch (NSException *exception) {
-            (void)exception;
-        }
-    } else {
-        @try {
-            CAFilter *filter = [caFilterClass filterWithType:@"colorMatrix"];
-            if (filter) {
-                [filter setValue:kPS12LiveFilterName forKey:@"name"];
-                [filter setValue:@YES forKey:@"enabled"];
-                [filter setValue:matrixValue forKey:@"inputColorMatrix"];
-
-                NSMutableArray *updated = existingFilters ? [existingFilters mutableCopy] : [NSMutableArray arrayWithCapacity:1];
-                [updated addObject:filter];
-                targetLayer.filters = [updated copy];
-            }
-        } @catch (NSException *exception) {
-            (void)exception;
+    if (_hasCachedState && _lastActive == active) {
+        if (!active || memcmp(&newMatrix, &_lastAppliedMatrix, sizeof(CAColorMatrix)) == 0) {
+            return;
         }
     }
 
-    [CATransaction commit];
+    _hasCachedState = YES;
+    _lastActive = active;
+    _lastAppliedMatrix = newMatrix;
+    [target applyColorMatrix:newMatrix active:active];
+}
+
+- (void)refreshOnPreviewView:(nullable UIView *)previewView {
+    (void)previewView;
+    [self refreshOnBackdropView:self.backdropView];
+}
+
+- (void)detachFromBackdropView:(nullable PSPreviewBackdropView *)backdropView {
+    PSPreviewBackdropView *target = backdropView ?: self.backdropView;
+    if (!target) {
+        return;
+    }
+    _hasCachedState = YES;
+    _lastActive = NO;
+    _lastAppliedMatrix = PS12CAColorMatrixIdentity();
+    [target applyColorMatrix:_lastAppliedMatrix active:NO];
 }
 
 - (void)detachFromPreviewView:(nullable UIView *)previewView {
-    CALayer *targetLayer = [self ps12_targetLayerForPreviewView:previewView];
-    if (!targetLayer) {
-        return;
-    }
-
-    NSArray *existingFilters = targetLayer.filters;
-    if (!existingFilters || existingFilters.count == 0) {
-        return;
-    }
-
-    NSMutableArray *preserved = [NSMutableArray arrayWithCapacity:existingFilters.count];
-    BOOL removedAny = NO;
-
-    for (id item in existingFilters) {
-        BOOL isOurs = NO;
-        if ([item respondsToSelector:@selector(name)]) {
-            @try {
-                NSString *name = [item valueForKey:@"name"];
-                if ([name isKindOfClass:[NSString class]] && [name isEqualToString:kPS12LiveFilterName]) {
-                    isOurs = YES;
-                }
-            } @catch (NSException *exception) {
-                (void)exception;
-            }
-        }
-        if (isOurs) {
-            removedAny = YES;
-        } else {
-            [preserved addObject:item];
-        }
-    }
-
-    if (!removedAny) {
-        return;
-    }
-
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    targetLayer.filters = (preserved.count > 0) ? [preserved copy] : nil;
-    [CATransaction commit];
+    (void)previewView;
+    [self detachFromBackdropView:self.backdropView];
 }
 
 @end

@@ -2,9 +2,9 @@
 //  PSPreviewFilterController.h
 //  PhotographicStyles12
 //
-//  Zero-session-intrusion viewfinder preview controller.
-//  Attaches and updates a named QuartzCore CAFilter ("colorMatrix") on
-//  CAMPreviewView's video layer without touching AVCaptureSession or CIContext.
+//  Zero-mediaserverd-intrusion viewfinder preview controller.
+//  Drives an isolated CABackdropLayer view (PSPreviewBackdropView) without
+//  ever mutating CAMPreviewView or AVCaptureVideoPreviewLayer.
 //
 
 #ifndef PS12_PREVIEW_FILTER_CONTROLLER_H
@@ -14,16 +14,24 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class PSPreviewBackdropView;
+
 @interface PSPreviewFilterController : NSObject
 
 + (instancetype)shared;
 
-/// Attaches or updates the named CAFilter on the preview view's target layer
-/// while preserving any existing filters (e.g., mode-switch blur or Iris FX).
+@property (nonatomic, weak, nullable) PSPreviewBackdropView *backdropView;
+
+/// Refreshes the active style matrix on the given backdrop view (or self.backdropView).
+- (void)refreshOnBackdropView:(nullable PSPreviewBackdropView *)backdropView;
+
+/// Forwards refresh to self.backdropView without touching previewView's layers.
 - (void)refreshOnPreviewView:(nullable UIView *)previewView;
 
-/// Removes our named CAFilter from the preview view's target layer while
-/// preserving all other filters.
+/// Disables and clears the filter on the given backdrop view.
+- (void)detachFromBackdropView:(nullable PSPreviewBackdropView *)backdropView;
+
+/// Forwards detach to self.backdropView without touching previewView's layers.
 - (void)detachFromPreviewView:(nullable UIView *)previewView;
 
 @end

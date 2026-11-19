@@ -14,7 +14,9 @@
 
 static const double kPS12MinLivePhotoDuration = 0.05;
 static const double kPS12MaxLivePhotoDuration = 6.50;
+static const double kPS12MaxVideoDuration = 90.0;
 static const double kPS12ExportTimeoutSeconds = 12.0;
+static const double kPS12VideoExportTimeoutSeconds = 25.0;
 
 @implementation PSLivePhotoVideoBaker
 
@@ -52,7 +54,7 @@ static const double kPS12ExportTimeoutSeconds = 12.0;
     }
 
     double durationSec = CMTimeGetSeconds(asset.duration);
-    if (!isfinite(durationSec) || durationSec <= kPS12MinLivePhotoDuration || durationSec > kPS12MaxLivePhotoDuration) {
+    if (!isfinite(durationSec) || durationSec <= kPS12MinLivePhotoDuration || durationSec > kPS12MaxVideoDuration) {
         return NO;
     }
 
@@ -85,11 +87,13 @@ static const double kPS12ExportTimeoutSeconds = 12.0;
     NSURL *tempURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:tempName]];
     [fm removeItemAtURL:tempURL error:nil];
 
+    BOOL isShortLivePhoto = (durationSec <= kPS12MaxLivePhotoDuration);
     AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
-                                                                           presetName:AVAssetExportPresetHighestQuality];
+                                                                           presetName:AVAssetExportPreset1280x720];
     if (!exportSession) {
+        NSString *fallbackPreset = isShortLivePhoto ? AVAssetExportPresetHighestQuality : AVAssetExportPresetMediumQuality;
         exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
-                                                         presetName:AVAssetExportPreset1280x720];
+                                                         presetName:fallbackPreset];
     }
     if (!exportSession) {
         return NO;
@@ -108,7 +112,8 @@ static const double kPS12ExportTimeoutSeconds = 12.0;
         dispatch_semaphore_signal(doneSem);
     }];
 
-    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kPS12ExportTimeoutSeconds * NSEC_PER_SEC));
+    double timeoutSec = (durationSec <= kPS12MaxLivePhotoDuration) ? kPS12ExportTimeoutSeconds : kPS12VideoExportTimeoutSeconds;
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeoutSec * NSEC_PER_SEC));
     long waitResult = dispatch_semaphore_wait(doneSem, timeout);
 
     if (waitResult != 0) {

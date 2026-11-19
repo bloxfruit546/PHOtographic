@@ -31,7 +31,7 @@ def check_clean_repo():
 def check_control():
     with open(os.path.join(ROOT, "control"), "r", encoding="utf-8") as f:
         ctrl = f.read()
-    assert re.search(r"^Version:\s*2\.0\.2\s*$", ctrl, re.MULTILINE), "control Version must be 2.0.2"
+    assert re.search(r"^Version:\s*2\.1\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.1.0"
     assert re.search(r"^Architecture:\s*iphoneos-arm\s*$", ctrl, re.MULTILINE), "control Architecture must be iphoneos-arm"
     assert "Depends: firmware (>= 12.0), mobilesubstrate" in ctrl, "control Depends mismatch"
 
@@ -87,6 +87,20 @@ def check_thumbnail_fast_path():
         tw = f.read()
     assert "bakedFastThumbnailImage:" in tw
     assert "PS12LogException" in tw, "Tweak.xm must use PS12LogException defensive shield"
+    assert "%hook CAMPreviewView" not in tw, "CAMPreviewView hook must be removed for v2.1.0"
+
+    with open(os.path.join(ROOT, "UI", "PSPreviewBackdropView.m"), "r", encoding="utf-8") as f:
+        bd = f.read()
+    assert "CABackdropLayer" in bd and "setScale:0.5" in bd, "PSPreviewBackdropView must use CABackdropLayer with scale 0.5"
+
+    with open(os.path.join(ROOT, "Core", "PSPreviewFilterController.m"), "r", encoding="utf-8") as f:
+        pfc = f.read()
+    assert "videoPreviewLayer" not in pfc and "previewLayer" not in pfc, "Must never touch CAMPreviewView videoPreviewLayer"
+    assert "memcmp" in pfc, "Must dirty-check CAColorMatrix via memcmp"
+
+    with open(os.path.join(ROOT, "Captures", "PSCaptureCoordinator.m"), "r", encoding="utf-8") as f:
+        cc = f.read()
+    assert "ps12_scheduleIdleContextPurge" in cc and "kCIContextOutputColorSpace" in cc, "Must purge idle CIContexts and disable output ColorSpace"
 
     with open(os.path.join(ROOT, "UI", "PSOverlayPassthroughView.m"), "r", encoding="utf-8") as f:
         ov = f.read()

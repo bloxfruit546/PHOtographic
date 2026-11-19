@@ -110,8 +110,8 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
             objc_setAssociatedObject(self, kPS12OverlayAssocKey, overlay, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
 
-        if (previewView) {
-            [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+        if (overlay) {
+            [[PSPreviewFilterController shared] refreshOnBackdropView:overlay.backdropView];
         }
     } @catch (NSException *exception) {
         PS12LogException(@"CAMViewfinderViewController.viewDidLoad", exception);
@@ -128,27 +128,12 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
         if (overlay && self.view) {
             overlay.frame = self.view.bounds;
             overlay.targetPreviewView = previewView;
+            [overlay setNeedsLayout];
             [overlay syncWithState];
-        }
-
-        if (previewView) {
-            [[PSPreviewFilterController shared] refreshOnPreviewView:previewView];
+            [[PSPreviewFilterController shared] refreshOnBackdropView:overlay.backdropView];
         }
     } @catch (NSException *exception) {
         PS12LogException(@"CAMViewfinderViewController.viewDidLayoutSubviews", exception);
-    }
-}
-
-%end
-
-%hook CAMPreviewView
-
-- (void)layoutSubviews {
-    %orig;
-    @try {
-        [[PSPreviewFilterController shared] refreshOnPreviewView:self];
-    } @catch (NSException *exception) {
-        PS12LogException(@"CAMPreviewView.layoutSubviews", exception);
     }
 }
 
@@ -291,28 +276,6 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     if (PSResolveParameters(snap).isIdentity ||
         ![coordinator livePhotoVideoBakingEnabled] ||
         [coordinator isUnderMemoryPressure]) {
-        %orig(result, request, completionHandler);
-        return;
-    }
-
-    BOOL isLivePhotoClip = NO;
-    Class stillReqClass = objc_getClass("CAMStillImageCaptureRequest");
-    if (stillReqClass && [request isKindOfClass:stillReqClass]) {
-        isLivePhotoClip = YES;
-    }
-    if (!isLivePhotoClip && result && [result respondsToSelector:@selector(stillDisplayTime)]) {
-        @try {
-            CMTime (*msgTime)(id, SEL) = (CMTime (*)(id, SEL))objc_msgSend;
-            CMTime t = msgTime(result, @selector(stillDisplayTime));
-            if (CMTIME_IS_VALID(t) && t.timescale > 0) {
-                isLivePhotoClip = YES;
-            }
-        } @catch (NSException *exception) {
-            (void)exception;
-        }
-    }
-
-    if (!isLivePhotoClip) {
         %orig(result, request, completionHandler);
         return;
     }

@@ -140,6 +140,7 @@ def check_still_and_video_bakers():
     with open(os.path.join(ROOT, "Captures", "PSLivePhotoVideoBaker.m"), "r", encoding="utf-8") as f:
         vid = f.read()
     assert "kPS12MaxLivePhotoDuration = 6.50" in vid, "Must cap Live Photo duration <= 6.5s"
+    assert "kPS12MaxVideoDuration = 90.0" in vid, "Must cap Video duration <= 90.0s"
     assert "[NSThread isMainThread]" in vid, "Must never block main thread"
     assert "isUnderMemoryPressure" in vid, "Must respect Jetsam memory pressure"
     assert "exportSession.metadata = asset.metadata" in vid, "Must preserve QuickTime metadata"

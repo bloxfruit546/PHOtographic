@@ -58,6 +58,16 @@ static inline CAColorMatrix PS12CAColorMatrixIdentity(void) {
 
 @end
 
+@interface CABackdropLayer : CALayer
+
+@property (getter=isEnabled) BOOL enabled;
+@property (nullable, copy) NSString *groupName;
+@property CGFloat scale;
+@property CGRect backdropRect;
+@property BOOL allowsInPlaceFiltering;
+
+@end
+
 NS_ASSUME_NONNULL_END
 
 #endif /* PS12_QUARTZ_CORE_PRIVATE_H */

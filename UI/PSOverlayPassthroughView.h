@@ -14,10 +14,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class PSPreviewBackdropView;
+
 @interface PSOverlayPassthroughView : UIView
 
-/// Weak reference to CAMPreviewView for immediate 60fps filter refresh.
+/// Weak reference to CAMPreviewView for backdrop coordinate alignment.
 @property (nonatomic, weak, nullable) UIView *targetPreviewView;
+
+/// Isolated CABackdropLayer view positioned behind UI controls.
+@property (nonatomic, strong, readonly) PSPreviewBackdropView *backdropView;
 
 /// Synchronizes top-bar button and control panel with PSState.
 - (void)syncWithState;
