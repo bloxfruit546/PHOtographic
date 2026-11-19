@@ -10,10 +10,10 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
-static const CGFloat kPS12PadCornerRadius = 22.0;
+static const CGFloat kPS12PadCornerRadius = 24.0;
 static const CGFloat kPS12PadInset        = 16.0;
-static const CGFloat kPS12PuckDiameter    = 24.0;
-static const NSInteger kPS12GridDimension = 11;
+static const CGFloat kPS12PuckDiameter    = 22.0;
+static const NSInteger kPS12GridDimension = 9;
 
 static inline float PS12PadClamp(float v, float lo, float hi) {
     if (v < lo) return lo;
@@ -65,14 +65,14 @@ static inline float PS12PadClamp(float v, float lo, float hi) {
 
     [self configureForPresetIndex:0];
 
-    self.backgroundColor = [UIColor colorWithWhite:0.07 alpha:0.72];
+    self.backgroundColor = [UIColor colorWithRed:18.0 / 255.0 green:18.0 / 255.0 blue:20.0 / 255.0 alpha:0.68];
     self.opaque = NO;
     self.exclusiveTouch = YES;
     self.contentMode = UIViewContentModeRedraw;
     self.layer.cornerRadius = kPS12PadCornerRadius;
     self.layer.masksToBounds = YES;
     self.layer.borderWidth = 1.0;
-    self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.18].CGColor;
+    self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.22].CGColor;
 
     if (NSClassFromString(@"UIImpactFeedbackGenerator")) {
         _haptics = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
@@ -289,11 +289,12 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     CGContextAddLineToPoint(ctx, midX, h - kPS12PadInset);
     CGContextStrokePath(ctx);
 
-    // 11 x 11 dot lattice with Gaussian proximity glow around puck
+    // 9 x 9 dot lattice with Gaussian proximity glow + emphasized center origin dot
     CGPoint puck = [self ps12_puckCenterForColor:_color tone:_tone];
     CGFloat usableW = MAX(1.0, w - kPS12PadInset * 2.0);
     CGFloat usableH = MAX(1.0, h - kPS12PadInset * 2.0);
     CGFloat sigmaSq = 2.0 * 22.0 * 22.0;
+    NSInteger centerIdx = kPS12GridDimension / 2;
 
     for (NSInteger row = 0; row < kPS12GridDimension; row++) {
         CGFloat ty = (CGFloat)row / (CGFloat)(kPS12GridDimension - 1);
@@ -307,30 +308,30 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
             CGFloat distSq = dx * dx + dy * dy;
             CGFloat gauss = exp(-distSq / sigmaSq);
 
-            CGFloat dotRadius = 0.85 + gauss * 1.15;
-            CGFloat dotAlpha = 0.24 + gauss * 0.66;
+            BOOL isOrigin = (row == centerIdx && col == centerIdx);
+            CGFloat baseRadius = isOrigin ? 1.45 : 0.90;
+            CGFloat baseAlpha = isOrigin ? 0.52 : 0.26;
+            CGFloat dotRadius = baseRadius + gauss * 1.15;
+            CGFloat dotAlpha = MIN(0.96, baseAlpha + gauss * 0.64);
 
             CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:dotAlpha].CGColor);
             CGContextFillEllipseInRect(ctx, CGRectMake(px - dotRadius, py - dotRadius, dotRadius * 2.0, dotRadius * 2.0));
         }
     }
 
-    // 24 x 24 pt puck
+    // 22 x 22 pt hollow-ring white puck (2.2 pt stroke)
     CGRect puckRect = CGRectMake(
         puck.x - kPS12PuckDiameter * 0.5,
         puck.y - kPS12PuckDiameter * 0.5,
         kPS12PuckDiameter,
         kPS12PuckDiameter
     );
-    CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:0.22].CGColor);
+    CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:0.08].CGColor);
     CGContextFillEllipseInRect(ctx, puckRect);
 
-    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:0.96].CGColor);
-    CGContextSetLineWidth(ctx, 2.0);
-    CGContextStrokeEllipseInRect(ctx, CGRectInset(puckRect, 1.0, 1.0));
-
-    CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
-    CGContextFillEllipseInRect(ctx, CGRectMake(puck.x - 2.0, puck.y - 2.0, 4.0, 4.0));
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:0.98].CGColor);
+    CGContextSetLineWidth(ctx, 2.2);
+    CGContextStrokeEllipseInRect(ctx, CGRectInset(puckRect, 1.1, 1.1));
 }
 
 @end

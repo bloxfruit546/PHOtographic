@@ -2,21 +2,18 @@
 //  PSPreviewFilterController.m
 //  PhotographicStyles12
 //
-//  Zero-mediaserverd-intrusion viewfinder preview controller.
-//  Drives PSPreviewBackdropView (CABackdropLayer) with strict dirty-checking.
+//  Zero-readback viewfinder preview controller for Apple A7 (iOS 12).
+//  Drives PSOpticalPreviewView with zero CAMPreviewView layer mutation.
 //
 
 #import "PSPreviewFilterController.h"
-#import "PSPreviewBackdropView.h"
+#import "PSOpticalPreviewView.h"
 #import "PSState.h"
-#import "PSColorProfile.h"
-#import "QuartzCorePrivate.h"
 #import <string.h>
 
 @interface PSPreviewFilterController () {
-    BOOL _hasCachedState;
-    BOOL _lastActive;
-    CAColorMatrix _lastAppliedMatrix;
+    BOOL _hasCachedSnapshot;
+    PSRenderSnapshot _lastSnapshot;
 }
 @end
 
@@ -34,59 +31,52 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _hasCachedState = NO;
-        _lastActive = NO;
-        _lastAppliedMatrix = PS12CAColorMatrixIdentity();
+        _hasCachedSnapshot = NO;
+        memset(&_lastSnapshot, 0, sizeof(_lastSnapshot));
     }
     return self;
 }
 
-- (void)refreshOnBackdropView:(nullable PSPreviewBackdropView *)backdropView {
-    PSPreviewBackdropView *target = backdropView ?: self.backdropView;
+- (void)refreshOnOpticalView:(nullable PSOpticalPreviewView *)opticalView {
+    PSOpticalPreviewView *target = opticalView ?: self.opticalPreviewView;
     if (!target) {
         return;
     }
-    if (backdropView && self.backdropView != backdropView) {
-        self.backdropView = backdropView;
+    if (opticalView && self.opticalPreviewView != opticalView) {
+        self.opticalPreviewView = opticalView;
     }
 
-    PSState *state = [PSState shared];
-    PSRenderSnapshot snap = [state snapshot];
-    PSResolvedParameters params = PSResolveParameters(snap);
-    BOOL active = snap.enabled && !params.isIdentity;
-    CAColorMatrix newMatrix = active ? [PSState previewMatrixForSnapshot:snap] : PS12CAColorMatrixIdentity();
-
-    if (_hasCachedState && _lastActive == active) {
-        if (!active || memcmp(&newMatrix, &_lastAppliedMatrix, sizeof(CAColorMatrix)) == 0) {
-            return;
-        }
+    PSRenderSnapshot snap = [[PSState shared] snapshot];
+    if (_hasCachedSnapshot && memcmp(&snap, &_lastSnapshot, sizeof(PSRenderSnapshot)) == 0) {
+        return;
     }
 
-    _hasCachedState = YES;
-    _lastActive = active;
-    _lastAppliedMatrix = newMatrix;
-    [target applyColorMatrix:newMatrix active:active];
+    _hasCachedSnapshot = YES;
+    _lastSnapshot = snap;
+    [target applySnapshot:snap];
 }
 
 - (void)refreshOnPreviewView:(nullable UIView *)previewView {
     (void)previewView;
-    [self refreshOnBackdropView:self.backdropView];
+    [self refreshOnOpticalView:self.opticalPreviewView];
 }
 
-- (void)detachFromBackdropView:(nullable PSPreviewBackdropView *)backdropView {
-    PSPreviewBackdropView *target = backdropView ?: self.backdropView;
+- (void)detachFromOpticalView:(nullable PSOpticalPreviewView *)opticalView {
+    PSOpticalPreviewView *target = opticalView ?: self.opticalPreviewView;
     if (!target) {
         return;
     }
-    _hasCachedState = YES;
-    _lastActive = NO;
-    _lastAppliedMatrix = PS12CAColorMatrixIdentity();
-    [target applyColorMatrix:_lastAppliedMatrix active:NO];
+    PSRenderSnapshot offSnap;
+    memset(&offSnap, 0, sizeof(offSnap));
+    offSnap.enabled = NO;
+    _hasCachedSnapshot = YES;
+    _lastSnapshot = offSnap;
+    [target applySnapshot:offSnap];
 }
 
 - (void)detachFromPreviewView:(nullable UIView *)previewView {
     (void)previewView;
-    [self detachFromBackdropView:self.backdropView];
+    [self detachFromOpticalView:self.opticalPreviewView];
 }
 
 @end

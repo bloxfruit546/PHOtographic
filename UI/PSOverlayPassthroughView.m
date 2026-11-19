@@ -2,12 +2,13 @@
 //  PSOverlayPassthroughView.m
 //  PhotographicStyles12
 //
-//  Ergonomic 320x568-compatible overlay hosting PSTopBarButton and
-//  PSStyleControlPanel with strict passthrough -hitTest:withEvent:.
+//  Ergonomic 320x568-compatible overlay hosting PSOpticalPreviewView,
+//  PSTopBarButton, and lazily instantiated PSStyleControlPanel with strict
+//  passthrough -hitTest:withEvent:.
 //
 
 #import "PSOverlayPassthroughView.h"
-#import "PSPreviewBackdropView.h"
+#import "PSOpticalPreviewView.h"
 #import "PSTopBarButton.h"
 #import "PSStyleControlPanel.h"
 #import "PSState.h"
@@ -17,11 +18,11 @@
 
 static const CGFloat kPS12TopButtonW = 40.0;
 static const CGFloat kPS12TopButtonH = 32.0;
-static const CGFloat kPS12PanelMaxW  = 304.0;
+static const CGFloat kPS12PanelMaxW  = 296.0;
 static const CGFloat kPS12PanelH     = 252.0;
 
 @interface PSOverlayPassthroughView () <PSTopBarButtonDelegate, PSStyleControlPanelDelegate>
-@property (nonatomic, strong, readwrite) PSPreviewBackdropView *backdropView;
+@property (nonatomic, strong, readwrite) PSOpticalPreviewView *opticalPreviewView;
 @property (nonatomic, strong) PSTopBarButton *topBarButton;
 @property (nonatomic, strong, nullable) PSStyleControlPanel *controlPanel;
 @property (nonatomic, assign) BOOL panelVisible;
@@ -40,9 +41,9 @@ static const CGFloat kPS12PanelH     = 252.0;
         self.opaque = NO;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-        _backdropView = [[PSPreviewBackdropView alloc] initWithFrame:self.bounds];
-        [self insertSubview:_backdropView atIndex:0];
-        [PSPreviewFilterController shared].backdropView = _backdropView;
+        _opticalPreviewView = [[PSOpticalPreviewView alloc] initWithFrame:self.bounds];
+        [self insertSubview:_opticalPreviewView atIndex:0];
+        [PSPreviewFilterController shared].opticalPreviewView = _opticalPreviewView;
 
         _topBarButton = [[PSTopBarButton alloc] initWithFrame:CGRectMake(0.0, 0.0, kPS12TopButtonW, kPS12TopButtonH)];
         _topBarButton.delegate = self;
@@ -59,7 +60,7 @@ static const CGFloat kPS12PanelH     = 252.0;
     CGFloat w = CGRectGetWidth(bounds);
     CGFloat h = CGRectGetHeight(bounds);
     if (!isfinite(w) || w <= 0.0 || !isfinite(h) || h <= 0.0) {
-        return CGRectMake(8.0, 100.0, kPS12PanelMaxW, kPS12PanelH);
+        return CGRectMake(12.0, 100.0, kPS12PanelMaxW, kPS12PanelH);
     }
 
     CGFloat bottomSafe = 0.0;
@@ -106,7 +107,7 @@ static const CGFloat kPS12PanelH     = 252.0;
         return;
     }
 
-    CGRect backdropFrame = self.bounds;
+    CGRect opticalFrame = self.bounds;
     UIView *preview = self.targetPreviewView;
     if (preview && preview.window && self.window && preview.window == self.window) {
         CGRect converted = [self convertRect:preview.bounds fromView:preview];
@@ -114,12 +115,14 @@ static const CGFloat kPS12PanelH     = 252.0;
             isfinite(converted.origin.x) && isfinite(converted.origin.y) &&
             isfinite(converted.size.width) && isfinite(converted.size.height) &&
             converted.size.width > 0.0 && converted.size.height > 0.0) {
-            backdropFrame = converted;
+            opticalFrame = converted;
         }
     }
-    self.backdropView.frame = backdropFrame;
-    if (self.backdropView.superview == self) {
-        [self sendSubviewToBack:self.backdropView];
+    if (!CGRectEqualToRect(self.opticalPreviewView.frame, opticalFrame)) {
+        self.opticalPreviewView.frame = opticalFrame;
+    }
+    if (self.opticalPreviewView.superview == self && self.subviews.firstObject != self.opticalPreviewView) {
+        [self sendSubviewToBack:self.opticalPreviewView];
     }
 
     CGFloat topSafe = 0.0;
@@ -133,10 +136,16 @@ static const CGFloat kPS12PanelH     = 252.0;
     CGFloat btnX = w - kPS12TopButtonW - MAX(rightSafe, 12.0);
     CGFloat btnY = MAX(topSafe, 6.0) + 46.0;
     if (btnX < 8.0) btnX = 8.0;
-    self.topBarButton.frame = CGRectMake(btnX, btnY, kPS12TopButtonW, kPS12TopButtonH);
+    CGRect btnFrame = CGRectMake(btnX, btnY, kPS12TopButtonW, kPS12TopButtonH);
+    if (!CGRectEqualToRect(self.topBarButton.frame, btnFrame)) {
+        self.topBarButton.frame = btnFrame;
+    }
 
     if (self.controlPanel) {
-        self.controlPanel.frame = [self ps12_panelFrameForBounds:self.bounds];
+        CGRect panelFrame = [self ps12_panelFrameForBounds:self.bounds];
+        if (!CGRectEqualToRect(self.controlPanel.frame, panelFrame)) {
+            self.controlPanel.frame = panelFrame;
+        }
     }
 }
 
@@ -228,7 +237,7 @@ static const CGFloat kPS12PanelH     = 252.0;
     [state saveNow];
 
     [self syncWithState];
-    [[PSPreviewFilterController shared] refreshOnBackdropView:self.backdropView];
+    [[PSPreviewFilterController shared] refreshOnOpticalView:self.opticalPreviewView];
 }
 
 #pragma mark - PSStyleControlPanelDelegate
@@ -236,7 +245,7 @@ static const CGFloat kPS12PanelH     = 252.0;
 - (void)styleControlPanelDidChangeRenderState:(PSStyleControlPanel *)panel {
     (void)panel;
     [self.topBarButton syncWithState];
-    [[PSPreviewFilterController shared] refreshOnBackdropView:self.backdropView];
+    [[PSPreviewFilterController shared] refreshOnOpticalView:self.opticalPreviewView];
 }
 
 - (void)styleControlPanelDidRequestCollapse:(PSStyleControlPanel *)panel {

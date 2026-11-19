@@ -23,7 +23,7 @@ PhotographicStyles12_FILES = Tweak.xm \
 	UI/PSPaletteSliderView.m \
 	UI/PSPresetStripView.m \
 	UI/PSStyleControlPanel.m \
-	UI/PSPreviewBackdropView.m \
+	UI/PSOpticalPreviewView.m \
 	UI/PSOverlayPassthroughView.m
 
 PhotographicStyles12_CFLAGS = -fobjc-arc -fno-modules -Wall -Wextra -Werror \

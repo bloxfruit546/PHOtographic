@@ -31,7 +31,7 @@ def check_clean_repo():
 def check_control():
     with open(os.path.join(ROOT, "control"), "r", encoding="utf-8") as f:
         ctrl = f.read()
-    assert re.search(r"^Version:\s*2\.1\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.1.0"
+    assert re.search(r"^Version:\s*2\.2\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.2.0"
     assert re.search(r"^Architecture:\s*iphoneos-arm\s*$", ctrl, re.MULTILINE), "control Architecture must be iphoneos-arm"
     assert "Depends: firmware (>= 12.0), mobilesubstrate" in ctrl, "control Depends mismatch"
 
@@ -87,16 +87,25 @@ def check_thumbnail_fast_path():
         tw = f.read()
     assert "bakedFastThumbnailImage:" in tw
     assert "PS12LogException" in tw, "Tweak.xm must use PS12LogException defensive shield"
-    assert "%hook CAMPreviewView" not in tw, "CAMPreviewView hook must be removed for v2.1.0"
+    assert "%hook CAMPreviewView" not in tw, "CAMPreviewView hook must be removed"
+    ctor_body = tw.split("%ctor")[1]
+    assert "PSCaptureCoordinator" not in ctor_body, "%ctor must NOT eagerly allocate PSCaptureCoordinator"
 
-    with open(os.path.join(ROOT, "UI", "PSPreviewBackdropView.m"), "r", encoding="utf-8") as f:
-        bd = f.read()
-    assert "CABackdropLayer" in bd and "setScale:0.5" in bd, "PSPreviewBackdropView must use CABackdropLayer with scale 0.5"
+    with open(os.path.join(ROOT, "UI", "PSOpticalPreviewView.m"), "r", encoding="utf-8") as f:
+        opt = f.read()
+    assert "CAGradientLayer" in opt and "STARK B&W" in opt, "PSOpticalPreviewView must use zero-readback CAGradientLayer"
 
     with open(os.path.join(ROOT, "Core", "PSPreviewFilterController.m"), "r", encoding="utf-8") as f:
         pfc = f.read()
     assert "videoPreviewLayer" not in pfc and "previewLayer" not in pfc, "Must never touch CAMPreviewView videoPreviewLayer"
-    assert "memcmp" in pfc, "Must dirty-check CAColorMatrix via memcmp"
+    assert "memcmp" in pfc, "Must dirty-check PSRenderSnapshot via memcmp"
+
+    for p in iter_v2_source_files():
+        if p.endswith((".m", ".xm")):
+            with open(p, "r", encoding="utf-8") as f:
+                rt = f.read()
+            assert "CABackdropLayer" not in rt, f"{os.path.relpath(p, ROOT)}: CABackdropLayer is banned in v2.2.0"
+            assert "filterWithType:" not in rt, f"{os.path.relpath(p, ROOT)}: CAFilter filterWithType: is banned in v2.2.0"
 
     with open(os.path.join(ROOT, "Captures", "PSCaptureCoordinator.m"), "r", encoding="utf-8") as f:
         cc = f.read()

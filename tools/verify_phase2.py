@@ -125,13 +125,9 @@ def check_quartzcore_and_kvc():
 
     with open(os.path.join(ROOT, "Core", "PSPreviewFilterController.m"), "r", encoding="utf-8") as f:
         pfc = f.read()
-    backdrop_path = os.path.join(ROOT, "UI", "PSPreviewBackdropView.m")
-    if os.path.isfile(backdrop_path):
-        with open(backdrop_path, "r", encoding="utf-8") as f:
-            pfc += "\n" + f.read()
-    assert '@"ps12LiveMatrix"' in pfc, "Alphanumeric filter name ps12LiveMatrix missing"
-    assert '@"filters.ps12LiveMatrix.inputColorMatrix"' in pfc, "KVC keyPath filters.ps12LiveMatrix.inputColorMatrix missing"
+    assert "PSOpticalPreviewView" in pfc, "PSPreviewFilterController must drive PSOpticalPreviewView"
     assert "com.ps12.liveMatrix" not in pfc, "Dotted filter name must be removed"
+    assert "CABackdropLayer" not in pfc and "CAFilter" not in pfc, "CABackdropLayer and CAFilter are banned in v2.2.0"
 
 
 def check_presets_and_kernel():

@@ -1,11 +1,11 @@
 //
 //  Tweak.xm
-//  PhotographicStyles12 (v2.0 - Phase 4)
+//  PhotographicStyles12 (v2.2.0)
 //
 //  Clean-room, Iris-safe Camera tweak:
 //    - Zero AVCaptureSession output injection.
 //    - Zero global CIContext or CALayer hooks.
-//    - Hardware-accelerated CAFilter ("colorMatrix") on CAMPreviewView.
+//    - Zero-readback optical preview veil (PSOpticalPreviewView).
 //    - Touch-passthrough CoreGraphics overlay on CAMViewfinderViewController.
 //    - Serialized, Jetsam-safe JPEG + Live Photo .MOV persistence baking.
 //
@@ -111,7 +111,7 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
         }
 
         if (overlay) {
-            [[PSPreviewFilterController shared] refreshOnBackdropView:overlay.backdropView];
+            [[PSPreviewFilterController shared] refreshOnOpticalView:overlay.opticalPreviewView];
         }
     } @catch (NSException *exception) {
         PS12LogException(@"CAMViewfinderViewController.viewDidLoad", exception);
@@ -126,11 +126,13 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
         PSOverlayPassthroughView *overlay = objc_getAssociatedObject(self, kPS12OverlayAssocKey);
 
         if (overlay && self.view) {
-            overlay.frame = self.view.bounds;
-            overlay.targetPreviewView = previewView;
-            [overlay setNeedsLayout];
-            [overlay syncWithState];
-            [[PSPreviewFilterController shared] refreshOnBackdropView:overlay.backdropView];
+            if (!CGRectEqualToRect(overlay.frame, self.view.bounds)) {
+                overlay.frame = self.view.bounds;
+            }
+            if (overlay.targetPreviewView != previewView) {
+                overlay.targetPreviewView = previewView;
+            }
+            [[PSPreviewFilterController shared] refreshOnOpticalView:overlay.opticalPreviewView];
         }
     } @catch (NSException *exception) {
         PS12LogException(@"CAMViewfinderViewController.viewDidLayoutSubviews", exception);
@@ -346,8 +348,6 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
         if (![bundleID isEqualToString:@"com.apple.camera"]) {
             return;
         }
-        [PSState shared];
-        [PSCaptureCoordinator shared];
         %init(PS12CameraHooks);
     }
 }

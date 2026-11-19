@@ -2,9 +2,9 @@
 //  PSPreviewFilterController.h
 //  PhotographicStyles12
 //
-//  Zero-mediaserverd-intrusion viewfinder preview controller.
-//  Drives an isolated CABackdropLayer view (PSPreviewBackdropView) without
-//  ever mutating CAMPreviewView or AVCaptureVideoPreviewLayer.
+//  Zero-readback viewfinder preview controller for Apple A7 (iOS 12).
+//  Drives PSOpticalPreviewView (pure GPU-composited translucent CALayers)
+//  without touching CAMPreviewView, CABackdropLayer, or CAFilter.
 //
 
 #ifndef PS12_PREVIEW_FILTER_CONTROLLER_H
@@ -14,24 +14,24 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@class PSPreviewBackdropView;
+@class PSOpticalPreviewView;
 
 @interface PSPreviewFilterController : NSObject
 
 + (instancetype)shared;
 
-@property (nonatomic, weak, nullable) PSPreviewBackdropView *backdropView;
+@property (nonatomic, weak, nullable) PSOpticalPreviewView *opticalPreviewView;
 
-/// Refreshes the active style matrix on the given backdrop view (or self.backdropView).
-- (void)refreshOnBackdropView:(nullable PSPreviewBackdropView *)backdropView;
+/// Refreshes the optical preview view with the current PSState snapshot.
+- (void)refreshOnOpticalView:(nullable PSOpticalPreviewView *)opticalView;
 
-/// Forwards refresh to self.backdropView without touching previewView's layers.
+/// Forwards refresh to self.opticalPreviewView without touching previewView's layers.
 - (void)refreshOnPreviewView:(nullable UIView *)previewView;
 
-/// Disables and clears the filter on the given backdrop view.
-- (void)detachFromBackdropView:(nullable PSPreviewBackdropView *)backdropView;
+/// Hides the optical preview view completely.
+- (void)detachFromOpticalView:(nullable PSOpticalPreviewView *)opticalView;
 
-/// Forwards detach to self.backdropView without touching previewView's layers.
+/// Forwards detach to self.opticalPreviewView without touching previewView's layers.
 - (void)detachFromPreviewView:(nullable UIView *)previewView;
 
 @end
