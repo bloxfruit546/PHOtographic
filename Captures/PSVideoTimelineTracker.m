@@ -10,7 +10,9 @@
 #import <os/lock.h>
 #import <math.h>
 
-static const NSUInteger kPS12MaxTimelineKeyframes = 256;
+enum {
+    kPS12MaxTimelineKeyframes = 256
+};
 
 typedef struct {
     double elapsedSeconds;
