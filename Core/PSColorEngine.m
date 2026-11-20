@@ -31,6 +31,7 @@ static NSString *const kPS12ColorKernelSource =
 @"\n"
 @"    float splitAmt = uSplit.x;\n"
 @"    float monoMix  = uSplit.y;\n"
+@"    float toneBias = uSplit.z;\n"
 @"\n"
 @"    // Soft skin-tone mask (R > G > B, warm hue, mid-luma, moderate chroma)\n"
 @"    float lum0 = dot(c, vec3(0.2126, 0.7152, 0.0722));\n"
@@ -43,8 +44,10 @@ static NSString *const kPS12ColorKernelSource =
 @"    float chromaGate = smoothstep(0.08, 0.22, satEst) * (1.0 - smoothstep(0.65, 0.88, satEst));\n"
 @"    float skinMask = clamp(rgDiff * gbDiff * lumaGate * chromaGate * skinProtect, 0.0, 0.90);\n"
 @"\n"
-@"    // Exposure, black-point lift, and contrast around 0.5 pivot\n"
-@"    c = c + vec3(exposure);\n"
+@"    // Midtone/shadow gamma curve (preserves pure black & pure white) + contrast S-curve\n"
+@"    float gammaExp = clamp(1.0 - toneBias * 0.28, 0.68, 1.38);\n"
+@"    c = pow(max(c, vec3(0.0001)), vec3(gammaExp));\n"
+@"    c = c + vec3(exposure * 0.55);\n"
 @"    c = (c - vec3(0.5)) * contrast + vec3(0.5);\n"
 @"    c = mix(c, vec3(1.0), blackLift * (1.0 - clamp(c, 0.0, 1.0)));\n"
 @"    c = clamp(c, 0.0, 1.0);\n"
@@ -180,7 +183,7 @@ static NSString *const kPS12ColorKernelSource =
                                            W:params.tint];
     CIVector *uSplit = [CIVector vectorWithX:params.splitStrength
                                            Y:params.monoMix
-                                           Z:0.0
+                                           Z:params.toneBias
                                            W:0.0];
     CIVector *uShade = [CIVector vectorWithX:params.shadowTintRGB[0]
                                            Y:params.shadowTintRGB[1]

@@ -193,10 +193,11 @@ PSResolvedParameters PSResolveParameters(PSRenderSnapshot snapshot) {
     float color = PS12ProfileClamp(snapshot.color, -1.0f, 1.0f);
     float palette = PS12ProfileClamp(snapshot.palette, 0.0f, 1.0f);
 
-    if (!snapshot.enabled || (idx == 0 && fabsf(tone) < 1e-5f && fabsf(color) < 1e-5f)) {
+    if (!snapshot.enabled || ((idx == 0 || palette < 1e-4f) && fabsf(tone) < 1e-5f && fabsf(color) < 1e-5f)) {
         out.isIdentity = YES;
         out.contrast = 1.0f;
         out.saturation = 1.0f;
+        out.toneBias = 0.0f;
         out.shadowTintRGB[0] = 0.5f;
         out.shadowTintRGB[1] = 0.5f;
         out.shadowTintRGB[2] = 0.5f;
@@ -207,18 +208,22 @@ PSResolvedParameters PSResolveParameters(PSRenderSnapshot snapshot) {
     }
 
     const PSPresetDefinition *def = &kPS12Presets[idx];
-    float paletteScale = 0.25f + 0.75f * palette;
+    // iPhone 16+ Palette curve: 0 -> 0.0 (neutral baseline), 0.5 -> 1.0 (authentic), 1.0 -> 1.35 (amplified)
+    float paletteScale = (palette <= 0.5f)
+        ? (palette * 2.0f)
+        : (1.0f + (palette - 0.5f) * 0.70f);
 
     out.isIdentity = NO;
-    out.exposure = PS12ProfileClamp(def->baseExposure * paletteScale + tone * 0.12f, -0.45f, 0.45f);
-    out.contrast = PS12ProfileClamp(1.0f + def->baseContrast * paletteScale - tone * 0.18f, 0.60f, 1.65f);
-    out.saturation = PS12ProfileClamp(1.0f + def->baseSaturation * paletteScale + color * 0.36f, 0.0f, 1.85f);
-    out.warmth = PS12ProfileClamp(def->baseWarmth * paletteScale + color * 0.08f * paletteScale, -0.60f, 0.60f);
+    out.toneBias = tone;
+    out.exposure = PS12ProfileClamp(def->baseExposure * paletteScale + tone * 0.14f, -0.45f, 0.45f);
+    out.contrast = PS12ProfileClamp(1.0f + def->baseContrast * paletteScale - tone * 0.22f, 0.60f, 1.65f);
+    out.saturation = PS12ProfileClamp(1.0f + def->baseSaturation * paletteScale + color * 0.42f, 0.0f, 1.85f);
+    out.warmth = PS12ProfileClamp(def->baseWarmth * paletteScale + color * 0.08f * fmaxf(0.25f, paletteScale), -0.60f, 0.60f);
     out.tint = PS12ProfileClamp(def->baseTint * paletteScale, -0.45f, 0.45f);
-    out.vibrance = PS12ProfileClamp(def->baseVibrance * paletteScale + color * 0.30f, -0.50f, 1.00f);
+    out.vibrance = PS12ProfileClamp(def->baseVibrance * paletteScale + color * 0.38f, -0.50f, 1.00f);
     out.splitStrength = PS12ProfileClamp(def->splitStrength * paletteScale, 0.0f, 1.00f);
-    out.monoMix = def->monoMix;
-    out.blackPointLift = PS12ProfileClamp(def->blackPointLift * paletteScale + fmaxf(tone, 0.0f) * 0.025f, 0.0f, 0.08f);
+    out.monoMix = (palette > 0.01f) ? def->monoMix : 0.0f;
+    out.blackPointLift = PS12ProfileClamp(def->blackPointLift * paletteScale + fmaxf(tone, 0.0f) * 0.03f, 0.0f, 0.08f);
     out.skinProtectStrength = def->skinProtectStrength;
 
     for (int i = 0; i < 3; i++) {

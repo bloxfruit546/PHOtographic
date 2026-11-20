@@ -22,6 +22,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, weak, nullable) PSOpticalPreviewView *opticalPreviewView;
 
+/// YES when CameraUI's native CAMEffectsFullsizeView is actively rendering
+/// PSPhotographicStyleFilter 1:1, suppressing the fallback optical veil.
+@property (nonatomic, assign) BOOL nativeEffectsViewActive;
+
 /// Refreshes the optical preview view with the current PSState snapshot.
 - (void)refreshOnOpticalView:(nullable PSOpticalPreviewView *)opticalView;
 

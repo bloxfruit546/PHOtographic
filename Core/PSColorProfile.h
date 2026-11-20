@@ -63,6 +63,7 @@ typedef struct PSResolvedParameters {
     float highlightTintRGB[3];
     float blackPointLift;
     float skinProtectStrength;
+    float toneBias;
 } PSResolvedParameters;
 
 /// Returns the immutable definition for presetIndex (clamped to 0..14).

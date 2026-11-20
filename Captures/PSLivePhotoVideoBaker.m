@@ -7,6 +7,7 @@
 
 #import "PSLivePhotoVideoBaker.h"
 #import "PSCaptureCoordinator.h"
+#import "PSVideoTimelineTracker.h"
 #import "PSColorProfile.h"
 #import "PSColorEngine.h"
 #import <AVFoundation/AVFoundation.h>
@@ -62,6 +63,7 @@ static const double kPS12VideoExportTimeoutSeconds = 25.0;
         return NO;
     }
 
+    BOOL isShortLivePhoto = (durationSec <= kPS12MaxLivePhotoDuration);
     AVVideoComposition *composition = [AVVideoComposition videoCompositionWithAsset:asset
                                                        applyingCIFiltersWithHandler:^(AVAsynchronousCIImageFilteringRequest *request) {
         @autoreleasepool {
@@ -72,8 +74,18 @@ static const double kPS12VideoExportTimeoutSeconds = 25.0;
                                                          userInfo:nil]];
                 return;
             }
+            PSResolvedParameters frameParams = params;
+            if (!isShortLivePhoto) {
+                double tSec = CMTimeGetSeconds(request.compositionTime);
+                PSRenderSnapshot frameSnap = [[PSVideoTimelineTracker shared] snapshotForVideoTimeSeconds:tSec fallback:snapshot];
+                frameParams = PSResolveParameters(frameSnap);
+            }
+            if (frameParams.isIdentity) {
+                [request finishWithImage:src context:context];
+                return;
+            }
             CIImage *clamped = [src imageByClampingToExtent];
-            CIImage *graded = [[PSColorEngine shared] applyKernelToImage:clamped withParameters:params];
+            CIImage *graded = [[PSColorEngine shared] applyKernelToImage:clamped withParameters:frameParams];
             CIImage *cropped = [(graded ?: src) imageByCroppingToRect:src.extent];
             [request finishWithImage:cropped context:context];
         }
@@ -87,7 +99,6 @@ static const double kPS12VideoExportTimeoutSeconds = 25.0;
     NSURL *tempURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:tempName]];
     [fm removeItemAtURL:tempURL error:nil];
 
-    BOOL isShortLivePhoto = (durationSec <= kPS12MaxLivePhotoDuration);
     AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
                                                                            presetName:AVAssetExportPreset1280x720];
     if (!exportSession) {

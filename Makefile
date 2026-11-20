@@ -14,10 +14,12 @@ PhotographicStyles12_FILES = Tweak.xm \
 	Core/PSState.m \
 	Core/PSColorProfile.m \
 	Core/PSColorEngine.m \
+	Core/PSPhotographicStyleFilter.m \
 	Core/PSPreviewFilterController.m \
 	Captures/PSCaptureCoordinator.m \
 	Captures/PSStillImageBaker.m \
 	Captures/PSLivePhotoVideoBaker.m \
+	Captures/PSVideoTimelineTracker.m \
 	UI/PSTopBarButton.m \
 	UI/PSMatrixPadView.m \
 	UI/PSPaletteSliderView.m \

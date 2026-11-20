@@ -8,11 +8,13 @@
 
 #import "PSPreviewFilterController.h"
 #import "PSOpticalPreviewView.h"
+#import "PSVideoTimelineTracker.h"
 #import "PSState.h"
 #import <string.h>
 
 @interface PSPreviewFilterController () {
     BOOL _hasCachedSnapshot;
+    BOOL _lastNativeActive;
     PSRenderSnapshot _lastSnapshot;
 }
 @end
@@ -47,13 +49,27 @@
     }
 
     PSRenderSnapshot snap = [[PSState shared] snapshot];
-    if (_hasCachedSnapshot && memcmp(&snap, &_lastSnapshot, sizeof(PSRenderSnapshot)) == 0) {
+    [[PSVideoTimelineTracker shared] recordSnapshotChange:snap];
+
+    BOOL nativeActive = self.nativeEffectsViewActive;
+    if (_hasCachedSnapshot &&
+        _lastNativeActive == nativeActive &&
+        memcmp(&snap, &_lastSnapshot, sizeof(PSRenderSnapshot)) == 0) {
         return;
     }
 
     _hasCachedSnapshot = YES;
+    _lastNativeActive = nativeActive;
     _lastSnapshot = snap;
-    [target applySnapshot:snap];
+
+    if (nativeActive) {
+        PSRenderSnapshot hiddenSnap;
+        memset(&hiddenSnap, 0, sizeof(hiddenSnap));
+        hiddenSnap.enabled = NO;
+        [target applySnapshot:hiddenSnap];
+    } else {
+        [target applySnapshot:snap];
+    }
 }
 
 - (void)refreshOnPreviewView:(nullable UIView *)previewView {

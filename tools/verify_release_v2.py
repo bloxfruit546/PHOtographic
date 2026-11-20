@@ -31,7 +31,7 @@ def check_clean_repo():
 def check_control():
     with open(os.path.join(ROOT, "control"), "r", encoding="utf-8") as f:
         ctrl = f.read()
-    assert re.search(r"^Version:\s*2\.2\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.2.0"
+    assert re.search(r"^Version:\s*2\.3\.0\s*$", ctrl, re.MULTILINE), "control Version must be 2.3.0"
     assert re.search(r"^Architecture:\s*iphoneos-arm\s*$", ctrl, re.MULTILINE), "control Architecture must be iphoneos-arm"
     assert "Depends: firmware (>= 12.0), mobilesubstrate" in ctrl, "control Depends mismatch"
 
@@ -88,6 +88,9 @@ def check_thumbnail_fast_path():
     assert "bakedFastThumbnailImage:" in tw
     assert "PS12LogException" in tw, "Tweak.xm must use PS12LogException defensive shield"
     assert "%hook CAMPreviewView" not in tw, "CAMPreviewView hook must be removed"
+    assert "%hook PHAssetCreationRequest" in tw, "Must hook PHAssetCreationRequest for Iris Live Photo front+rear"
+    assert "%hook CAMFilterUtilities" in tw, "Must hook CAMFilterUtilities for 1:1 native preview"
+    assert "performSerializedBake:" in tw, "Must bake 8MP still asynchronously to avoid 1s rear-cam blackout"
     ctor_body = tw.split("%ctor")[1]
     assert "PSCaptureCoordinator" not in ctor_body, "%ctor must NOT eagerly allocate PSCaptureCoordinator"
 

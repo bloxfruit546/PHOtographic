@@ -25,6 +25,8 @@
 #import "PSCaptureCoordinator.h"
 #import "PSStillImageBaker.h"
 #import "PSLivePhotoVideoBaker.h"
+#import "PSVideoTimelineTracker.h"
+#import "PSPhotographicStyleFilter.h"
 #import "PSDiagnostics.h"
 
 static const void *kPS12OverlayAssocKey          = &kPS12OverlayAssocKey;
@@ -141,6 +143,86 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
 
 %end
 
+#pragma mark - Native CameraUI 1:1 CIFilter Preview & Video Timeline Hooks
+
+%hook CAMFilterUtilities
+
++ (NSArray *)filtersForFilterType:(NSInteger)filterType
+                     lightingType:(NSInteger)lightingType
+                applyDepthEffect:(BOOL)applyDepthEffect
+{
+    NSArray *orig = %orig(filterType, lightingType, applyDepthEffect);
+    @try {
+        PSRenderSnapshot snap = [[PSState shared] snapshot];
+        if (!PSResolveParameters(snap).isIdentity) {
+            PSPhotographicStyleFilter *styleFilter = [[PSPhotographicStyleFilter alloc] init];
+            if (styleFilter) {
+                NSMutableArray *updated = orig ? [orig mutableCopy] : [NSMutableArray arrayWithCapacity:1];
+                [updated addObject:styleFilter];
+                return [updated copy];
+            }
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMFilterUtilities.filtersForFilterType", exception);
+    }
+    return orig;
+}
+
+%end
+
+%hook CAMEffectsFullsizeView
+
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    @try {
+        UIView *view = (UIView *)(id)self;
+        BOOL active = (!hidden && view.window != nil);
+        PSPreviewFilterController *ctrl = [PSPreviewFilterController shared];
+        ctrl.nativeEffectsViewActive = active;
+        [ctrl refreshOnOpticalView:nil];
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMEffectsFullsizeView.setHidden", exception);
+    }
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    @try {
+        UIView *view = (UIView *)(id)self;
+        BOOL active = (!view.hidden && view.window != nil);
+        PSPreviewFilterController *ctrl = [PSPreviewFilterController shared];
+        ctrl.nativeEffectsViewActive = active;
+        [ctrl refreshOnOpticalView:nil];
+    } @catch (NSException *exception) {
+        PS12LogException(@"CAMEffectsFullsizeView.didMoveToWindow", exception);
+    }
+}
+
+%end
+
+%hook CUCaptureController
+
+- (void)startCapturingVideoWithRequest:(id)request {
+    @try {
+        PSRenderSnapshot snap = [[PSState shared] snapshot];
+        [[PSVideoTimelineTracker shared] beginRecordingSessionWithInitialSnapshot:snap];
+    } @catch (NSException *exception) {
+        PS12LogException(@"CUCaptureController.startCapturingVideo", exception);
+    }
+    %orig;
+}
+
+- (void)stopCapturingVideo {
+    @try {
+        [[PSVideoTimelineTracker shared] endRecordingSession];
+    } @catch (NSException *exception) {
+        PS12LogException(@"CUCaptureController.stopCapturingVideo", exception);
+    }
+    %orig;
+}
+
+%end
+
 #pragma mark - Still Capture Response Thumbnails
 
 %hook CAMStillImageCaptureResponse
@@ -170,35 +252,23 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
             duringBurst:(BOOL)duringBurst
                   error:(NSError **)error
 {
-    if (duringBurst || !data || data.length == 0) {
+    if (duringBurst || !data || data.length == 0 || !thumbnail) {
         return %orig(url, data, thumbnail, properties, duringBurst, error);
     }
 
+    // Never block CameraUI's capture/write thread with 8MP JPEG baking (prevents 1s rear-cam blackout).
+    // Only fast-bake the tiny thumbnail (<= 360px) here; full 8MP bake runs asynchronously below.
+    UIImage *bakedThumb = thumbnail;
     @try {
         PSRenderSnapshot snap = [[PSState shared] snapshot];
-        if (PSResolveParameters(snap).isIdentity) {
-            return %orig(url, data, thumbnail, properties, duringBurst, error);
-        }
-
-        __block NSData *bakedData = nil;
-        __block UIImage *bakedThumb = thumbnail;
-
-        [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
-            bakedData = [PSStillImageBaker bakedJPEGDataFromJPEGData:data snapshot:snap context:context];
-            if (thumbnail) {
-                bakedThumb = [PSStillImageBaker bakedPreviewImage:thumbnail snapshot:snap context:context] ?: thumbnail;
-            }
-        }];
-
-        if (bakedData && bakedData != data && bakedData.length > 512) {
-            PS12MarkURLBaked(url);
-            return %orig(url, bakedData, bakedThumb, properties, duringBurst, error);
+        if (!PSResolveParameters(snap).isIdentity) {
+            bakedThumb = [PSStillImageBaker bakedFastThumbnailImage:thumbnail snapshot:snap] ?: thumbnail;
         }
     } @catch (NSException *exception) {
         PS12LogException(@"CAMPersistenceController._writeJPEGToURL", exception);
     }
 
-    return %orig(url, data, thumbnail, properties, duringBurst, error);
+    return %orig(url, data, bakedThumb, properties, duringBurst, error);
 }
 
 - (void)_locallyPersistStillImageResult:(id)result
@@ -225,42 +295,50 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     }
 
     void (^wrappedHandler)(id) = ^(id localResult) {
+        NSURL *destURL = nil;
+        NSURL *linkedURL = nil;
         @try {
             if (localResult) {
-                NSURL *destURL = nil;
-                NSURL *linkedURL = nil;
-                @try {
-                    if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
-                        destURL = [localResult localDestinationURL];
-                    }
-                    if ([localResult respondsToSelector:@selector(linkedDestinationURL)]) {
-                        linkedURL = [localResult linkedDestinationURL];
-                    }
-                } @catch (NSException *exception) {
-                    PS12LogException(@"CAMPersistenceController.stillResultURLs", exception);
-                    destURL = nil;
-                    linkedURL = nil;
+                if ([localResult respondsToSelector:@selector(localDestinationURL)]) {
+                    destURL = [localResult localDestinationURL];
                 }
-
-                if ((destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) ||
-                    (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL))) {
-                    [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
-                        if (destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL)) {
-                            if ([PSStillImageBaker bakeJPEGFileAtURL:destURL snapshot:snap context:context]) {
-                                PS12MarkURLBaked(destURL);
-                            }
-                        }
-                        if (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL)) {
-                            if ([PSStillImageBaker bakeJPEGFileAtURL:linkedURL snapshot:snap context:context]) {
-                                PS12MarkURLBaked(linkedURL);
-                            }
-                        }
-                    }];
+                if ([localResult respondsToSelector:@selector(linkedDestinationURL)]) {
+                    linkedURL = [localResult linkedDestinationURL];
                 }
             }
         } @catch (NSException *exception) {
-            PS12LogException(@"CAMPersistenceController.stillHandler", exception);
+            PS12LogException(@"CAMPersistenceController.stillResultURLs", exception);
+            destURL = nil;
+            linkedURL = nil;
         }
+
+        BOOL needsDest = (destURL && [destURL isFileURL] && !PS12IsURLBaked(destURL));
+        BOOL needsLinked = (linkedURL && [linkedURL isFileURL] && ![linkedURL isEqual:destURL] && !PS12IsURLBaked(linkedURL));
+
+        if (needsDest || needsLinked) {
+            // Asynchronous non-blocking 8MP bake on serial queue: frees rear ISP immediately!
+            [[PSCaptureCoordinator shared] performSerializedBake:^(CIContext *context) {
+                @try {
+                    if (needsDest && !PS12IsURLBaked(destURL)) {
+                        if ([PSStillImageBaker bakeJPEGFileAtURL:destURL snapshot:snap context:context]) {
+                            PS12MarkURLBaked(destURL);
+                        }
+                    }
+                    if (needsLinked && !PS12IsURLBaked(linkedURL)) {
+                        if ([PSStillImageBaker bakeJPEGFileAtURL:linkedURL snapshot:snap context:context]) {
+                            PS12MarkURLBaked(linkedURL);
+                        }
+                    }
+                } @catch (NSException *exception) {
+                    PS12LogException(@"CAMPersistenceController.asyncStillBake", exception);
+                }
+                if (completionHandler) {
+                    completionHandler(localResult);
+                }
+            }];
+            return;
+        }
+
         if (completionHandler) {
             completionHandler(localResult);
         }
@@ -336,6 +414,66 @@ static UIImage *PS12BakeResponseImage(id response, UIImage *orig, const void *as
     };
 
     %orig(result, request, wrappedHandler);
+}
+
+%end
+
+#pragma mark - Iris Live Photo Photos.framework Commit Hook (Front + Rear)
+
+%hook PHAssetCreationRequest
+
+- (void)addResourceWithType:(NSInteger)type fileURL:(NSURL *)fileURL options:(id)options {
+    @try {
+        if (fileURL && [fileURL isFileURL] && !PS12IsURLBaked(fileURL) && ![NSThread isMainThread]) {
+            PSRenderSnapshot snap = [[PSState shared] snapshot];
+            if (!PSResolveParameters(snap).isIdentity) {
+                PSCaptureCoordinator *coordinator = [PSCaptureCoordinator shared];
+                // PHAssetResourceTypePhoto = 1
+                if (type == 1) {
+                    [coordinator performSynchronousSerializedBake:^(CIContext *context) {
+                        if ([PSStillImageBaker bakeJPEGFileAtURL:fileURL snapshot:snap context:context]) {
+                            PS12MarkURLBaked(fileURL);
+                        }
+                    }];
+                }
+                // PHAssetResourceTypeVideo = 2, PHAssetResourceTypePairedVideo = 9 (Iris Live Photo .MOV)
+                else if ((type == 9 || type == 2) &&
+                         [coordinator livePhotoVideoBakingEnabled] &&
+                         ![coordinator isUnderMemoryPressure]) {
+                    [coordinator performSynchronousSerializedBake:^(CIContext *context) {
+                        if ([PSLivePhotoVideoBaker bakeLivePhotoMovieAtURL:fileURL snapshot:snap context:context]) {
+                            PS12MarkURLBaked(fileURL);
+                        }
+                    }];
+                }
+            }
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"PHAssetCreationRequest.addResourceFileURL", exception);
+    }
+    %orig(type, fileURL, options);
+}
+
+- (void)addResourceWithType:(NSInteger)type data:(NSData *)data options:(id)options {
+    NSData *payload = data;
+    @try {
+        // PHAssetResourceTypePhoto = 1
+        if (type == 1 && data && data.length > 512 && ![NSThread isMainThread]) {
+            PSRenderSnapshot snap = [[PSState shared] snapshot];
+            if (!PSResolveParameters(snap).isIdentity) {
+                __block NSData *bakedData = nil;
+                [[PSCaptureCoordinator shared] performSynchronousSerializedBake:^(CIContext *context) {
+                    bakedData = [PSStillImageBaker bakedJPEGDataFromJPEGData:data snapshot:snap context:context];
+                }];
+                if (bakedData && bakedData.length > 512) {
+                    payload = bakedData;
+                }
+            }
+        }
+    } @catch (NSException *exception) {
+        PS12LogException(@"PHAssetCreationRequest.addResourceData", exception);
+    }
+    %orig(type, payload, options);
 }
 
 %end
